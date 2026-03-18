@@ -239,7 +239,7 @@ extension CoveApp {
 
         // fresh install with no existing backup enabled and no local wallets — check if cloud has a backup
         if !skipCloudCheck, case .disabled = backupState,
-           (try? Database().wallets().isEmpty()) == true
+           (try? Database().wallets().hasAnyWallets()) == false
         {
             Task.detached {
                 let cloud = CloudStorageAccessImpl()

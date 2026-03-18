@@ -324,7 +324,25 @@ fn recover_legacy_at_path(db_path: &Path) -> Result<()> {
     if tmp_path.exists() {
         log_remove_file(&tmp_path);
     }
-    if bak_path.exists() {
+
+    if bak_path.exists() && db_path.exists() {
+        match verify_encrypted_redb_db(db_path) {
+            Ok(true) => {
+                log_remove_file(&bak_path);
+            }
+            Ok(false) => {
+                let path = db_path.display();
+                warn!("Encrypted DB at {path} appears corrupt, restoring from legacy backup");
+                log_remove_file(db_path);
+                std::fs::rename(&bak_path, db_path)
+                    .context(format!("failed to restore from legacy backup at {path}"))?;
+            }
+            Err(e) => {
+                let path = db_path.display();
+                warn!("Cannot verify DB at {path}: {e:#} — preserving both files");
+            }
+        }
+    } else if bak_path.exists() {
         log_remove_file(&bak_path);
     }
 
@@ -874,6 +892,46 @@ mod tests {
         assert!(!tmp.exists());
         assert!(verify_encrypted_redb_db(&dest).unwrap());
         assert!(!source.exists());
+    }
+
+    #[test]
+    fn recover_legacy_preserves_bak_when_main_db_corrupt() {
+        setup_test_key();
+
+        let dir = TempDir::new().unwrap();
+        let db_path = dir.path().join("cove.db");
+        let bak_path = dir.path().join("cove.db.bak");
+
+        // main DB exists but is corrupt, .bak is a valid encrypted DB
+        std::fs::write(&db_path, b"corrupt_data").unwrap();
+        create_encrypted_redb_at(&bak_path);
+
+        recover_legacy_at_path(&db_path).unwrap();
+
+        // should have restored from .bak
+        assert!(db_path.exists());
+        assert!(!bak_path.exists());
+        assert!(verify_encrypted_redb_db(&db_path).unwrap());
+    }
+
+    #[test]
+    fn recover_legacy_deletes_bak_when_main_db_healthy() {
+        setup_test_key();
+
+        let dir = TempDir::new().unwrap();
+        let db_path = dir.path().join("cove.db");
+        let bak_path = dir.path().join("cove.db.bak");
+
+        // main DB is healthy, .bak exists
+        create_encrypted_redb_at(&db_path);
+        std::fs::write(&bak_path, b"old_backup").unwrap();
+
+        recover_legacy_at_path(&db_path).unwrap();
+
+        // should have deleted .bak since main DB is healthy
+        assert!(db_path.exists());
+        assert!(!bak_path.exists());
+        assert!(verify_encrypted_redb_db(&db_path).unwrap());
     }
 
     #[test]

@@ -74,6 +74,26 @@ impl WalletsTable {
         Ok(self.len(network, wallet_mode)? == 0)
     }
 
+    /// Check if any wallets exist across all networks and modes
+    pub fn has_any_wallets(&self) -> Result<bool, Error> {
+        use strum::IntoEnumIterator;
+
+        let table = self.read_table()?;
+        if table.is_empty()? {
+            return Ok(false);
+        }
+
+        for network in Network::iter() {
+            for mode in WalletMode::iter() {
+                if self.len(network, mode)? > 0 {
+                    return Ok(true);
+                }
+            }
+        }
+
+        Ok(false)
+    }
+
     pub fn len(&self, network: Network, mode: WalletMode) -> Result<u16, Error> {
         let count = self.get_all(network, mode).map(|wallets| wallets.len() as u16)?;
 
