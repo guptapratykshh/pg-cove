@@ -148,7 +148,7 @@ impl RustCloudBackupManager {
         }
 
         let this = CLOUD_BACKUP_MANAGER.clone();
-        std::thread::spawn(move || {
+        cove_tokio::task::spawn_blocking(move || {
             if let Err(e) = this.do_enable_cloud_backup() {
                 error!("Cloud backup enable failed: {e}");
                 this.send(Message::StateChanged(CloudBackupState::Error(e.to_string())));
@@ -169,7 +169,7 @@ impl RustCloudBackupManager {
         }
 
         let this = CLOUD_BACKUP_MANAGER.clone();
-        std::thread::spawn(move || {
+        cove_tokio::task::spawn_blocking(move || {
             if let Err(e) = this.do_restore_from_cloud_backup() {
                 error!("Cloud backup restore failed: {e}");
                 this.send(Message::StateChanged(CloudBackupState::Error(e.to_string())));
