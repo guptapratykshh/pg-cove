@@ -28,6 +28,14 @@ struct CloudBackupDetailScreen: View {
                         Text(loadError)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
+
+                        Button {
+                            self.loadError = nil
+                            Task { await refreshFromCloud() }
+                        } label: {
+                            Label("Retry", systemImage: "arrow.clockwise")
+                        }
+                        .buttonStyle(.bordered)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
@@ -60,15 +68,19 @@ struct CloudBackupDetailScreen: View {
     }
 
     private func refreshFromCloud() async {
-        let refreshed = await Task.detached {
+        let result = await Task.detached {
             CloudBackupManager.shared.rust.refreshCloudBackupDetail()
         }.value
 
-        if let refreshed {
-            detail = refreshed
+        guard let result else { return }
+
+        switch result {
+        case let .success(refreshedDetail):
+            detail = refreshedDetail
             loadError = nil
-        } else {
-            loadError = "Unable to verify backup status from iCloud"
+        case let .accessError(message):
+            detail = nil
+            loadError = message
         }
     }
 }

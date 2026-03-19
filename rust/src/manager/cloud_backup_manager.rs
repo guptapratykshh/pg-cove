@@ -16,7 +16,7 @@ use cove_cspp::backup_data::{
 };
 use cove_cspp::master_key_crypto;
 use cove_cspp::wallet_crypto;
-use cove_device::cloud_storage::CloudStorage;
+use cove_device::cloud_storage::{CloudStorage, CloudStorageError};
 use cove_device::keychain::Keychain;
 use cove_device::passkey::PasskeyAccess;
 use cove_types::network::Network;
@@ -74,6 +74,12 @@ pub struct CloudBackupWalletItem {
     pub wallet_type: WalletType,
     pub fingerprint: Option<String>,
     pub status: CloudBackupWalletStatus,
+}
+
+#[derive(Debug, Clone, uniffi::Enum)]
+pub enum CloudBackupDetailResult {
+    Success(CloudBackupDetail),
+    AccessError(String),
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -212,21 +218,45 @@ impl RustCloudBackupManager {
 
     /// Download the cloud manifest and build detail from it as source of truth
     ///
-    /// Returns None if disabled or on error
-    pub fn refresh_cloud_backup_detail(&self) -> Option<CloudBackupDetail> {
+    /// Returns None if disabled. On NotFound, re-uploads all wallets automatically.
+    /// On other errors, returns AccessError with the message
+    pub fn refresh_cloud_backup_detail(&self) -> Option<CloudBackupDetailResult> {
         if !matches!(*self.state.read(), CloudBackupState::Enabled) {
             return None;
         }
+
+        let cloud = CloudStorage::global();
+        let manifest_json = match cloud.download_manifest() {
+            Ok(json) => json,
+            Err(CloudStorageError::NotFound(_)) => {
+                info!("Manifest not found, re-uploading all wallets");
+                if let Err(e) = self.do_reupload_all_wallets() {
+                    return Some(CloudBackupDetailResult::AccessError(format!(
+                        "Failed to re-upload wallets: {e}"
+                    )));
+                }
+                match cloud.download_manifest() {
+                    Ok(json) => json,
+                    Err(e) => return Some(CloudBackupDetailResult::AccessError(e.to_string())),
+                }
+            }
+            Err(e) => return Some(CloudBackupDetailResult::AccessError(e.to_string())),
+        };
+
+        let manifest: BackupManifest = match serde_json::from_slice(&manifest_json) {
+            Ok(m) => m,
+            Err(e) => {
+                return Some(CloudBackupDetailResult::AccessError(format!(
+                    "Failed to parse manifest: {e}"
+                )));
+            }
+        };
 
         let db = Database::global();
         let last_sync = match db.global_config.cloud_backup() {
             CloudBackup::Enabled { last_sync, .. } => last_sync,
             CloudBackup::Disabled => return None,
         };
-
-        let cloud = CloudStorage::global();
-        let manifest_json = cloud.download_manifest().ok()?;
-        let manifest: BackupManifest = serde_json::from_slice(&manifest_json).ok()?;
 
         let cloud_record_ids: std::collections::HashSet<_> =
             manifest.wallet_record_ids.iter().cloned().collect();
@@ -264,7 +294,12 @@ impl RustCloudBackupManager {
         let cloud_only_count =
             cloud_record_ids.iter().filter(|rid| !local_record_ids.contains(*rid)).count() as u32;
 
-        Some(CloudBackupDetail { last_sync, backed_up, not_backed_up, cloud_only_count })
+        Some(CloudBackupDetailResult::Success(CloudBackupDetail {
+            last_sync,
+            backed_up,
+            not_backed_up,
+            cloud_only_count,
+        }))
     }
 
     /// Download and decrypt wallets that are in the cloud but not on this device
@@ -512,6 +547,24 @@ impl RustCloudBackupManager {
         Ok(items)
     }
 
+    /// Re-upload all local wallets to cloud when the manifest is missing
+    ///
+    /// Reuses the master key from keychain (no passkey interaction needed)
+    fn do_reupload_all_wallets(&self) -> Result<(), CloudBackupError> {
+        info!("Re-uploading all wallets to cloud");
+
+        let cspp = cove_cspp::Cspp::new(Keychain::global().clone());
+        let master_key = cspp
+            .get_or_create_master_key()
+            .map_err_prefix("master key", CloudBackupError::Internal)?;
+
+        let critical_key = Zeroizing::new(master_key.critical_data_key());
+        let cloud = CloudStorage::global();
+        let db = Database::global();
+
+        upload_all_wallets_and_manifest(cloud, &critical_key, &db)
+    }
+
     fn do_enable_cloud_backup(&self) -> Result<(), CloudBackupError> {
         self.send(Message::StateChanged(CloudBackupState::Enabling));
 
@@ -542,48 +595,9 @@ impl RustCloudBackupManager {
         let cloud = CloudStorage::global();
         cloud.upload_master_key_backup(master_json).map_err_str(CloudBackupError::Cloud)?;
 
-        // enumerate and encrypt all wallets
         let critical_key = Zeroizing::new(master_key.critical_data_key());
-        let mut wallet_record_ids = Vec::new();
         let db = Database::global();
-
-        for metadata in all_local_wallets(&db) {
-            let entry = build_wallet_entry(&metadata, metadata.wallet_mode)?;
-            let encrypted = wallet_crypto::encrypt_wallet_entry(&entry, &critical_key)
-                .map_err_str(CloudBackupError::Crypto)?;
-
-            let record_id = wallet_record_id(metadata.id.as_ref());
-            let wallet_json =
-                serde_json::to_vec(&encrypted).map_err_str(CloudBackupError::Internal)?;
-
-            cloud
-                .upload_wallet_backup(record_id.clone(), wallet_json)
-                .map_err_str(CloudBackupError::Cloud)?;
-
-            wallet_record_ids.push(record_id);
-        }
-
-        // upload manifest last as commit marker
-        let manifest = BackupManifest {
-            version: 1,
-            created_at: jiff::Timestamp::now().as_second().try_into().unwrap_or(0),
-            wallet_record_ids,
-        };
-
-        let manifest_json =
-            serde_json::to_vec(&manifest).map_err_str(CloudBackupError::Internal)?;
-
-        cloud.upload_manifest(manifest_json).map_err_str(CloudBackupError::Cloud)?;
-
-        // mark enabled only after manifest succeeds
-        let wallet_count = manifest.wallet_record_ids.len() as u32;
-        let now = jiff::Timestamp::now().as_second().try_into().unwrap_or(0);
-        db.global_config
-            .set_cloud_backup(&CloudBackup::Enabled {
-                last_sync: Some(now),
-                wallet_count: Some(wallet_count),
-            })
-            .map_err_prefix("persist cloud backup state", CloudBackupError::Internal)?;
+        upload_all_wallets_and_manifest(cloud, &critical_key, &db)?;
 
         self.send(Message::EnableComplete);
         self.send(Message::StateChanged(CloudBackupState::Enabled));
@@ -708,6 +722,51 @@ impl RustCloudBackupManager {
         info!("Cloud backup restore complete");
         Ok(())
     }
+}
+
+/// Encrypt and upload all local wallets, create a fresh manifest, and persist enabled state
+fn upload_all_wallets_and_manifest(
+    cloud: &CloudStorage,
+    critical_key: &[u8; 32],
+    db: &Database,
+) -> Result<(), CloudBackupError> {
+    let mut wallet_record_ids = Vec::new();
+
+    for metadata in all_local_wallets(db) {
+        let entry = build_wallet_entry(&metadata, metadata.wallet_mode)?;
+        let encrypted = wallet_crypto::encrypt_wallet_entry(&entry, critical_key)
+            .map_err_str(CloudBackupError::Crypto)?;
+
+        let record_id = wallet_record_id(metadata.id.as_ref());
+        let wallet_json = serde_json::to_vec(&encrypted).map_err_str(CloudBackupError::Internal)?;
+
+        cloud
+            .upload_wallet_backup(record_id.clone(), wallet_json)
+            .map_err_str(CloudBackupError::Cloud)?;
+
+        wallet_record_ids.push(record_id);
+    }
+
+    let manifest = BackupManifest {
+        version: 1,
+        created_at: jiff::Timestamp::now().as_second().try_into().unwrap_or(0),
+        wallet_record_ids,
+    };
+
+    let manifest_json = serde_json::to_vec(&manifest).map_err_str(CloudBackupError::Internal)?;
+
+    cloud.upload_manifest(manifest_json).map_err_str(CloudBackupError::Cloud)?;
+
+    let wallet_count = manifest.wallet_record_ids.len() as u32;
+    let now = jiff::Timestamp::now().as_second().try_into().unwrap_or(0);
+    db.global_config
+        .set_cloud_backup(&CloudBackup::Enabled {
+            last_sync: Some(now),
+            wallet_count: Some(wallet_count),
+        })
+        .map_err_prefix("persist cloud backup state", CloudBackupError::Internal)?;
+
+    Ok(())
 }
 
 /// All local wallets across every network and mode

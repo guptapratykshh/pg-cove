@@ -7106,9 +7106,10 @@ public protocol RustCloudBackupManagerProtocol: AnyObject, Sendable {
     /**
      * Download the cloud manifest and build detail from it as source of truth
      *
-     * Returns None if disabled or on error
+     * Returns None if disabled. On NotFound, re-uploads all wallets automatically.
+     * On other errors, returns AccessError with the message
      */
-    func refreshCloudBackupDetail()  -> CloudBackupDetail?
+    func refreshCloudBackupDetail()  -> CloudBackupDetailResult?
     
     /**
      * Restore from cloud backup — called after device restore
@@ -7262,10 +7263,11 @@ open func listenForUpdates(reconciler: CloudBackupManagerReconciler)  {try! rust
     /**
      * Download the cloud manifest and build detail from it as source of truth
      *
-     * Returns None if disabled or on error
+     * Returns None if disabled. On NotFound, re-uploads all wallets automatically.
+     * On other errors, returns AccessError with the message
      */
-open func refreshCloudBackupDetail() -> CloudBackupDetail?  {
-    return try!  FfiConverterOptionTypeCloudBackupDetail.lift(try! rustCall() {
+open func refreshCloudBackupDetail() -> CloudBackupDetailResult?  {
+    return try!  FfiConverterOptionTypeCloudBackupDetailResult.lift(try! rustCall() {
     uniffi_cove_fn_method_rustcloudbackupmanager_refresh_cloud_backup_detail(
             self.uniffiCloneHandle(),$0
     )
@@ -17300,6 +17302,79 @@ public func FfiConverterTypeCloudBackup_lower(_ value: CloudBackup) -> RustBuffe
 
 
 
+
+public enum CloudBackupDetailResult: Equatable, Hashable {
+    
+    case success(CloudBackupDetail
+    )
+    case accessError(String
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension CloudBackupDetailResult: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCloudBackupDetailResult: FfiConverterRustBuffer {
+    typealias SwiftType = CloudBackupDetailResult
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CloudBackupDetailResult {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .success(try FfiConverterTypeCloudBackupDetail.read(from: &buf)
+        )
+        
+        case 2: return .accessError(try FfiConverterString.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: CloudBackupDetailResult, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .success(v1):
+            writeInt(&buf, Int32(1))
+            FfiConverterTypeCloudBackupDetail.write(v1, into: &buf)
+            
+        
+        case let .accessError(v1):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(v1, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCloudBackupDetailResult_lift(_ buf: RustBuffer) throws -> CloudBackupDetailResult {
+    return try FfiConverterTypeCloudBackupDetailResult.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCloudBackupDetailResult_lower(_ value: CloudBackupDetailResult) -> RustBuffer {
+    return FfiConverterTypeCloudBackupDetailResult.lower(value)
+}
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 
 public enum CloudBackupReconcileMessage: Equatable, Hashable {
     
@@ -30592,30 +30667,6 @@ fileprivate struct FfiConverterOptionTypePsbt: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-fileprivate struct FfiConverterOptionTypeCloudBackupDetail: FfiConverterRustBuffer {
-    typealias SwiftType = CloudBackupDetail?
-
-    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
-        guard let value = value else {
-            writeInt(&buf, Int8(0))
-            return
-        }
-        writeInt(&buf, Int8(1))
-        FfiConverterTypeCloudBackupDetail.write(value, into: &buf)
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
-        switch try readInt(&buf) as Int8 {
-        case 0: return nil
-        case 1: return try FfiConverterTypeCloudBackupDetail.read(from: &buf)
-        default: throw UniffiInternalError.unexpectedOptionalTag
-        }
-    }
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
 fileprivate struct FfiConverterOptionTypeDeriveInfo: FfiConverterRustBuffer {
     typealias SwiftType = DeriveInfo?
 
@@ -30752,6 +30803,30 @@ fileprivate struct FfiConverterOptionTypeBlockSizeLast: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeBlockSizeLast.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeCloudBackupDetailResult: FfiConverterRustBuffer {
+    typealias SwiftType = CloudBackupDetailResult?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeCloudBackupDetailResult.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeCloudBackupDetailResult.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -32666,7 +32741,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_cove_checksum_method_rustcloudbackupmanager_listen_for_updates() != 57718) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_cove_checksum_method_rustcloudbackupmanager_refresh_cloud_backup_detail() != 64560) {
+    if (uniffi_cove_checksum_method_rustcloudbackupmanager_refresh_cloud_backup_detail() != 8874) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_cove_checksum_method_rustcloudbackupmanager_restore_from_cloud_backup() != 40792) {
