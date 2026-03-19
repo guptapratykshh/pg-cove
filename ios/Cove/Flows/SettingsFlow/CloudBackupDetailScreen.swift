@@ -5,14 +5,17 @@ struct CloudBackupDetailScreen: View {
     @State private var isSyncing = false
     @State private var syncError: String?
     @State private var loadError: String?
+    @State private var isReuploading = false
     @State private var cloudOnlyWallets: [CloudBackupWalletItem]?
     @State private var isLoadingCloudOnly = false
+    @State private var syncHealth: ICloudDriveHelper.SyncHealth = .noFiles
 
     var body: some View {
         Form {
             if let detail {
                 DetailFormContent(
                     detail: detail,
+                    syncHealth: syncHealth,
                     isSyncing: $isSyncing,
                     syncError: $syncError,
                     cloudOnlyWallets: $cloudOnlyWallets,
@@ -30,12 +33,32 @@ struct CloudBackupDetailScreen: View {
                             .multilineTextAlignment(.center)
 
                         Button {
-                            self.loadError = nil
-                            Task { await refreshFromCloud() }
+                            isReuploading = true
+                            Task {
+                                let error = await Task.detached {
+                                    CloudBackupManager.shared.rust.reuploadAllWallets()
+                                }.value
+
+                                if let error {
+                                    self.loadError = error
+                                    isReuploading = false
+                                    return
+                                }
+
+                                await refreshFromCloud()
+                                isReuploading = false
+                            }
                         } label: {
-                            Label("Retry", systemImage: "arrow.clockwise")
+                            if isReuploading {
+                                ProgressView()
+                                    .padding(.trailing, 4)
+                                Text("Re-uploading...")
+                            } else {
+                                Label("Re-upload Wallets", systemImage: "arrow.clockwise.icloud")
+                            }
                         }
                         .buttonStyle(.bordered)
+                        .disabled(isReuploading)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 8)
@@ -75,13 +98,15 @@ struct CloudBackupDetailScreen: View {
         guard let result else { return }
 
         switch result {
-        case let .success(refreshedDetail):
+        case .success(let refreshedDetail):
             detail = refreshedDetail
             loadError = nil
-        case let .accessError(message):
+        case .accessError(let message):
             detail = nil
             loadError = message
         }
+
+        syncHealth = ICloudDriveHelper.shared.overallSyncHealth()
     }
 }
 
@@ -89,13 +114,14 @@ struct CloudBackupDetailScreen: View {
 
 private struct DetailFormContent: View {
     let detail: CloudBackupDetail
+    let syncHealth: ICloudDriveHelper.SyncHealth
     @Binding var isSyncing: Bool
     @Binding var syncError: String?
     @Binding var cloudOnlyWallets: [CloudBackupWalletItem]?
     @Binding var isLoadingCloudOnly: Bool
 
     var body: some View {
-        HeaderSection(lastSync: detail.lastSync)
+        HeaderSection(lastSync: detail.lastSync, syncHealth: syncHealth)
         if !detail.backedUp.isEmpty { BackedUpSections(wallets: detail.backedUp) }
         if !detail.notBackedUp.isEmpty {
             NotBackedUpSections(wallets: detail.notBackedUp)
@@ -115,12 +141,12 @@ private struct DetailFormContent: View {
 
 private struct HeaderSection: View {
     let lastSync: UInt64?
+    let syncHealth: ICloudDriveHelper.SyncHealth
 
     var body: some View {
         Section {
             VStack(spacing: 8) {
-                Image(systemName: "checkmark.icloud.fill")
-                    .foregroundColor(.green)
+                headerIcon
                     .font(.largeTitle)
 
                 Text("Cloud Backup Active")
@@ -130,10 +156,54 @@ private struct HeaderSection: View {
                     Text("Last synced \(formatDate(lastSync))")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+
+                    syncHealthLabel
                 }
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 8)
+        }
+    }
+
+    @ViewBuilder
+    private var headerIcon: some View {
+        switch syncHealth {
+        case .allUploaded, .noFiles:
+            Image(systemName: "checkmark.icloud.fill")
+                .foregroundColor(.green)
+        case .uploading:
+            Image(systemName: "arrow.clockwise.icloud.fill")
+                .foregroundColor(.blue)
+        case .failed:
+            Image(systemName: "exclamationmark.icloud.fill")
+                .foregroundColor(.red)
+        case .unavailable:
+            Image(systemName: "checkmark.icloud.fill")
+                .foregroundColor(.green)
+        }
+    }
+
+    @ViewBuilder
+    private var syncHealthLabel: some View {
+        switch syncHealth {
+        case .allUploaded:
+            Label("All files synced to iCloud", systemImage: "checkmark.circle.fill")
+                .font(.caption)
+                .foregroundStyle(.green)
+        case .uploading:
+            HStack(spacing: 4) {
+                ProgressView()
+                    .controlSize(.mini)
+                Text("Syncing to iCloud...")
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        case .failed(let message):
+            Label("Sync error: \(message)", systemImage: "exclamationmark.triangle.fill")
+                .font(.caption)
+                .foregroundStyle(.red)
+        case .noFiles, .unavailable:
+            EmptyView()
         }
     }
 
@@ -256,16 +326,18 @@ private struct NotBackedUpSections: View {
         }
 
         ForEach(grouped.keys.sorted(), id: \.self) { key in
-            Section(header: HStack {
-                Text(key.title)
-                Text("NOT BACKED UP")
-                    .font(.caption2)
-                    .fontWeight(.semibold)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(.red, in: Capsule())
-            }) {
+            Section(
+                header: HStack {
+                    Text(key.title)
+                    Text("NOT BACKED UP")
+                        .font(.caption2)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(.red, in: Capsule())
+                }
+            ) {
                 ForEach(grouped[key]!, id: \.name) { item in
                     WalletItemRow(item: item)
                 }

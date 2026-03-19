@@ -1,172 +1,95 @@
-import CloudKit
-
 @_exported import CoveCore
 import Foundation
 
 final class CloudStorageAccessImpl: CloudStorageAccess, @unchecked Sendable {
-    private let container = CKContainer(identifier: "iCloud.com.covebitcoinwallet")
-    private var db: CKDatabase {
-        container.privateCloudDatabase
-    }
-
-    private static let recordType = "CSPPBackup"
-    private static let dataField = "data"
+    private let helper = ICloudDriveHelper.shared
 
     // MARK: - Upload
 
     func uploadMasterKeyBackup(data: Data) throws {
-        try uploadRecord(recordId: csppMasterKeyRecordId(), data: data)
+        try upload(recordId: csppMasterKeyRecordId(), data: data)
     }
 
     func uploadWalletBackup(recordId: String, data: Data) throws {
-        try uploadRecord(recordId: recordId, data: data)
+        try upload(recordId: recordId, data: data)
     }
 
     func uploadManifest(data: Data) throws {
-        try uploadRecord(recordId: csppManifestRecordId(), data: data)
+        try upload(recordId: csppManifestRecordId(), data: data)
     }
 
     // MARK: - Download
 
     func downloadMasterKeyBackup() throws -> Data {
-        try downloadRecord(recordId: csppMasterKeyRecordId())
+        try download(recordId: csppMasterKeyRecordId())
     }
 
     func downloadWalletBackup(recordId: String) throws -> Data {
-        try downloadRecord(recordId: recordId)
+        try download(recordId: recordId)
     }
 
+    /// Downloads the manifest with authoritative NotFound semantics
+    ///
+    /// Uses NSMetadataQuery to confirm the file truly doesn't exist in iCloud
+    /// before returning NotFound, preventing false NotFound from sync lag
     func downloadManifest() throws -> Data {
-        try downloadRecord(recordId: csppManifestRecordId())
+        let recordId = csppManifestRecordId()
+        let filename = ICloudDriveHelper.hashedFilename(for: recordId)
+        let url = try helper.fileURL(for: recordId)
+
+        // check if file exists locally and is already downloaded
+        if FileManager.default.fileExists(atPath: url.path) {
+            let values = try? url.resourceValues(forKeys: [.ubiquitousItemDownloadingStatusKey])
+            if values?.ubiquitousItemDownloadingStatus == .current {
+                return try helper.coordinatedRead(from: url)
+            }
+
+            // file exists locally but needs download (evicted)
+            try helper.ensureDownloaded(url: url, recordId: recordId)
+            return try helper.coordinatedRead(from: url)
+        }
+
+        // file not on local disk — use metadata query for authoritative check
+        let existsInCloud: Bool
+        do {
+            existsInCloud = try helper.fileExistsInCloud(name: filename)
+        } catch {
+            throw CloudStorageError.NotAvailable("cannot verify manifest: \(error.localizedDescription)")
+        }
+
+        guard existsInCloud else {
+            throw CloudStorageError.NotFound(recordId)
+        }
+
+        // file exists in cloud but not locally — download it
+        try helper.ensureDownloaded(url: url, recordId: recordId)
+        return try helper.coordinatedRead(from: url)
     }
 
     // MARK: - Presence check
 
+    /// Checks that BOTH manifest AND master key files exist in iCloud
     func hasCloudBackup() throws -> Bool {
-        let recordID = CKRecord.ID(recordName: csppManifestRecordId())
-        let semaphore = DispatchSemaphore(value: 0)
-        var fetchResult: Result<Bool, CloudStorageError>?
+        let manifestName = ICloudDriveHelper.hashedFilename(for: csppManifestRecordId())
+        let masterKeyName = ICloudDriveHelper.hashedFilename(for: csppMasterKeyRecordId())
 
-        let operation = CKFetchRecordsOperation(recordIDs: [recordID])
-        operation.perRecordResultBlock = { _, result in
-            switch result {
-            case .success:
-                fetchResult = .success(true)
-            case let .failure(error):
-                if let ckError = error as? CKError, ckError.code == .unknownItem {
-                    fetchResult = .success(false)
-                } else {
-                    fetchResult = .failure(Self.mapFetchError(error, recordId: "manifest"))
-                }
-            }
-        }
-        operation.fetchRecordsResultBlock = { result in
-            if fetchResult == nil {
-                if case let .failure(error) = result {
-                    Log.error("CloudKit hasCloudBackup operation failed: \(error)")
-                    fetchResult = .failure(Self.mapFetchError(error, recordId: "manifest"))
-                } else {
-                    fetchResult = .success(false)
-                }
-            }
-            semaphore.signal()
-        }
+        let manifestExists = try helper.fileExistsInCloud(name: manifestName)
+        guard manifestExists else { return false }
 
-        db.add(operation)
-        semaphore.wait()
-        return try fetchResult!.get()
+        return try helper.fileExistsInCloud(name: masterKeyName)
     }
 
-    // MARK: - Private helpers
+    // MARK: - Private
 
-    private func uploadRecord(recordId: String, data: Data) throws {
-        let record = CKRecord(
-            recordType: Self.recordType,
-            recordID: CKRecord.ID(recordName: recordId)
-        )
-        record[Self.dataField] = data as CKRecordValue
-
-        let semaphore = DispatchSemaphore(value: 0)
-        var uploadError: CloudStorageError?
-
-        let operation = CKModifyRecordsOperation(
-            recordsToSave: [record],
-            recordIDsToDelete: nil
-        )
-        operation.savePolicy = .allKeys
-        operation.modifyRecordsResultBlock = { result in
-            if case let .failure(error) = result {
-                if let ckError = error as? CKError, ckError.code == .quotaExceeded {
-                    uploadError = .QuotaExceeded
-                } else {
-                    uploadError = .UploadFailed(error.localizedDescription)
-                }
-            }
-            semaphore.signal()
-        }
-
-        db.add(operation)
-        semaphore.wait()
-
-        if let error = uploadError {
-            throw error
-        }
+    private func upload(recordId: String, data: Data) throws {
+        let url = try helper.fileURL(for: recordId)
+        try helper.coordinatedWrite(data: data, to: url)
+        try helper.waitForUpload(url: url)
     }
 
-    private func downloadRecord(recordId: String) throws -> Data {
-        let recordID = CKRecord.ID(recordName: recordId)
-        let semaphore = DispatchSemaphore(value: 0)
-        var fetchResult: Result<Data, CloudStorageError>?
-
-        let operation = CKFetchRecordsOperation(recordIDs: [recordID])
-        operation.perRecordResultBlock = { _, result in
-            switch result {
-            case let .success(record):
-                if let data = record[Self.dataField] as? Data {
-                    fetchResult = .success(data)
-                } else {
-                    fetchResult = .failure(
-                        .DownloadFailed("record '\(recordId)' exists but data field is nil")
-                    )
-                }
-            case let .failure(error):
-                fetchResult = .failure(Self.mapFetchError(error, recordId: recordId))
-            }
-        }
-        operation.fetchRecordsResultBlock = { result in
-            if fetchResult == nil {
-                if case let .failure(error) = result {
-                    Log.error("CloudKit fetch operation failed: \(error)")
-                    fetchResult = .failure(Self.mapFetchError(error, recordId: recordId))
-                } else {
-                    fetchResult = .failure(.NotFound(recordId))
-                }
-            }
-            semaphore.signal()
-        }
-
-        db.add(operation)
-        semaphore.wait()
-        return try fetchResult!.get()
-    }
-
-    private static func mapFetchError(_ error: Error, recordId: String) -> CloudStorageError {
-        if let ckError = error as? CKError {
-            Log.error(
-                "CloudKit CKError code=\(ckError.code.rawValue) "
-                    + "domain=\(ckError.errorCode) "
-                    + "userInfo=\(ckError.userInfo)"
-            )
-            switch ckError.code {
-            case .unknownItem:
-                return .NotFound(recordId)
-            case .networkUnavailable, .networkFailure, .serviceUnavailable:
-                return .NotAvailable(ckError.localizedDescription)
-            default:
-                return .DownloadFailed(ckError.localizedDescription)
-            }
-        }
-        Log.error("CloudKit non-CK error: \(error)")
-        return .DownloadFailed(error.localizedDescription)
+    private func download(recordId: String) throws -> Data {
+        let url = try helper.fileURL(for: recordId)
+        try helper.ensureDownloaded(url: url, recordId: recordId)
+        return try helper.coordinatedRead(from: url)
     }
 }

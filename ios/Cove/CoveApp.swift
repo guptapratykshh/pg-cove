@@ -233,18 +233,30 @@ extension CoveApp {
     }
 
     private func completeBootstrap(warning: String? = nil, skipCloudCheck: Bool = false) {
+        Log.info("[STARTUP] completeBootstrap called, skipCloudCheck=\(skipCloudCheck)")
         CloudBackupManager.shared.rust.syncPersistedState()
 
         let backupState = CloudBackupManager.shared.state
+        Log.info("[STARTUP] backupState=\(backupState)")
 
         // fresh install with no existing backup enabled and no local wallets — check if cloud has a backup
         if !skipCloudCheck, case .disabled = backupState,
            (try? Database().wallets().hasAnyWallets()) == false
         {
+            Log.info("[STARTUP] entering cloud check branch")
             Task.detached {
                 let cloud = CloudStorageAccessImpl()
                 do {
+                    Log.info("[STARTUP] checking iCloud availability")
+                    guard FileManager.default.ubiquityIdentityToken != nil else {
+                        Log.info("[STARTUP] iCloud not available, skipping cloud check")
+                        await MainActor.run { self.finishBootstrap(warning: warning) }
+                        return
+                    }
+
+                    Log.info("[STARTUP] calling hasCloudBackup")
                     let hasBackup = try cloud.hasCloudBackup()
+                    Log.info("[STARTUP] hasCloudBackup returned: \(hasBackup)")
                     await MainActor.run {
                         if hasBackup {
                             self.startupState = .offerCloudRestore
@@ -256,17 +268,18 @@ extension CoveApp {
                     Log.warn("[STARTUP] cloud backup check failed: \(error)")
                     await MainActor.run {
                         self.finishBootstrap(warning: warning)
-                        self.cloudCheckError = error.localizedDescription
                     }
                 }
             }
             return
         }
 
+        Log.info("[STARTUP] skipping cloud check, calling finishBootstrap directly")
         finishBootstrap(warning: warning)
     }
 
     private func finishBootstrap(warning: String? = nil) {
+        Log.info("[STARTUP] finishBootstrap called")
         let appManager = AppManager.shared
         appManager.asyncRuntimeReady = true
 

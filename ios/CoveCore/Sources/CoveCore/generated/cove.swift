@@ -7107,7 +7107,7 @@ public protocol RustCloudBackupManagerProtocol: AnyObject, Sendable {
      * Download the cloud manifest and build detail from it as source of truth
      *
      * Returns None if disabled. On NotFound, re-uploads all wallets automatically.
-     * On other errors, returns AccessError with the message
+     * On other errors, returns AccessError so the UI can offer a re-upload button
      */
     func refreshCloudBackupDetail()  -> CloudBackupDetailResult?
     
@@ -7117,6 +7117,14 @@ public protocol RustCloudBackupManagerProtocol: AnyObject, Sendable {
      * Uses discoverable credential assertion (no local keychain state required)
      */
     func restoreFromCloudBackup() 
+    
+    /**
+     * Re-upload all local wallets and create a fresh manifest
+     *
+     * Called from the UI when the manifest can't be downloaded (e.g. container mismatch).
+     * Returns None on success, Some(error) on failure
+     */
+    func reuploadAllWallets()  -> String?
     
     /**
      * Read persisted cloud backup state from DB and update in-memory state
@@ -7264,7 +7272,7 @@ open func listenForUpdates(reconciler: CloudBackupManagerReconciler)  {try! rust
      * Download the cloud manifest and build detail from it as source of truth
      *
      * Returns None if disabled. On NotFound, re-uploads all wallets automatically.
-     * On other errors, returns AccessError with the message
+     * On other errors, returns AccessError so the UI can offer a re-upload button
      */
 open func refreshCloudBackupDetail() -> CloudBackupDetailResult?  {
     return try!  FfiConverterOptionTypeCloudBackupDetailResult.lift(try! rustCall() {
@@ -7284,6 +7292,20 @@ open func restoreFromCloudBackup()  {try! rustCall() {
             self.uniffiCloneHandle(),$0
     )
 }
+}
+    
+    /**
+     * Re-upload all local wallets and create a fresh manifest
+     *
+     * Called from the UI when the manifest can't be downloaded (e.g. container mismatch).
+     * Returns None on success, Some(error) on failure
+     */
+open func reuploadAllWallets() -> String?  {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+    uniffi_cove_fn_method_rustcloudbackupmanager_reupload_all_wallets(
+            self.uniffiCloneHandle(),$0
+    )
+})
 }
     
     /**
@@ -32741,10 +32763,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_cove_checksum_method_rustcloudbackupmanager_listen_for_updates() != 57718) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_cove_checksum_method_rustcloudbackupmanager_refresh_cloud_backup_detail() != 8874) {
+    if (uniffi_cove_checksum_method_rustcloudbackupmanager_refresh_cloud_backup_detail() != 11202) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_cove_checksum_method_rustcloudbackupmanager_restore_from_cloud_backup() != 40792) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_cove_checksum_method_rustcloudbackupmanager_reupload_all_wallets() != 1497) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_cove_checksum_method_rustcloudbackupmanager_sync_persisted_state() != 19758) {

@@ -219,7 +219,7 @@ impl RustCloudBackupManager {
     /// Download the cloud manifest and build detail from it as source of truth
     ///
     /// Returns None if disabled. On NotFound, re-uploads all wallets automatically.
-    /// On other errors, returns AccessError with the message
+    /// On other errors, returns AccessError so the UI can offer a re-upload button
     pub fn refresh_cloud_backup_detail(&self) -> Option<CloudBackupDetailResult> {
         if !matches!(*self.state.read(), CloudBackupState::Enabled) {
             return None;
@@ -332,6 +332,14 @@ impl RustCloudBackupManager {
             }
             this.send(Message::StateChanged(CloudBackupState::Enabled));
         });
+    }
+
+    /// Re-upload all local wallets and create a fresh manifest
+    ///
+    /// Called from the UI when the manifest can't be downloaded (e.g. container mismatch).
+    /// Returns None on success, Some(error) on failure
+    pub fn reupload_all_wallets(&self) -> Option<String> {
+        self.do_reupload_all_wallets().err().map(|e| e.to_string())
     }
 
     /// Enable cloud backup — idempotent, safe to retry
