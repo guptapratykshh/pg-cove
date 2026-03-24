@@ -79,6 +79,9 @@ pub enum WalletDataError {
 
     #[error("Unable to save: {0}")]
     Save(String),
+
+    #[error("Unsupported database version {version} for wallet {id} at {path}")]
+    UnsupportedVersion { id: WalletId, path: String, version: u8 },
 }
 
 pub type Error = WalletDataError;
@@ -199,8 +202,12 @@ pub fn get_or_create_database(id: &WalletId, location: &Path) -> Result<Arc<redb
         }
     }
 
-    let db = super::encrypted_backend::open_or_create_database(&path)
-        .map_err(|e| WalletDataError::DatabaseAccess { id: id.clone(), error: e.to_string() })?;
+    let db = super::encrypted_backend::open_or_create_database(&path).map_err(|e| match e {
+        super::error::DatabaseError::UnsupportedVersion { path, version } => {
+            WalletDataError::UnsupportedVersion { id: id.clone(), path, version }
+        }
+        other => WalletDataError::DatabaseAccess { id: id.clone(), error: other.to_string() },
+    })?;
 
     let mut db_connections = DATABASE_CONNECTIONS.write();
     let db = Arc::new(db);

@@ -67,6 +67,9 @@ pub enum DatabaseError {
     #[error("header integrity check failed at {path}: {error}")]
     HeaderIntegrity { path: String, error: String },
 
+    #[error("unsupported encrypted database version {version} at {path}")]
+    UnsupportedVersion { path: String, version: u8 },
+
     #[error("database at {path} is not encrypted; migration may not have completed")]
     PlaintextNotAllowed { path: String },
 }

@@ -12,6 +12,18 @@ use cove_common::consts::{ROOT_DATA_DIR, WALLET_DATA_DIR};
 
 use super::log_remove_file;
 
+#[derive(Debug, thiserror::Error)]
+enum WalletMigrationError {
+    #[error("wallet migration cancelled")]
+    Cancelled,
+
+    #[error("failed to migrate {} wallet database(s)", .failures.len())]
+    Failed {
+        /// (db_path_display, error_message)
+        failures: Vec<(String, String)>,
+    },
+}
+
 const LEGACY_MAIN_DB: &str = "cove.db";
 const LEGACY_WALLET_DB: &str = "wallet_data.json";
 const ENCRYPTED_MAIN_DB: &str = "cove.encrypted.db";
@@ -508,25 +520,25 @@ impl WalletMigration {
             }
         };
 
-        let mut errors: Vec<String> = Vec::new();
+        let mut failures: Vec<(String, String)> = Vec::new();
 
         for entry in entries {
             if self.migration.is_cancelled() {
                 info!("Wallet database migration cancelled");
-                eyre::bail!("wallet migration cancelled");
+                return Err(WalletMigrationError::Cancelled.into());
             }
 
             let entry = entry.context("failed to read directory entry during wallet migration")?;
             let wallet_dir = entry.path();
             if needs_redb_migration(&wallet_dir) {
                 let source_db = wallet_dir.join(LEGACY_WALLET_DB);
-                let db_display = source_db.display();
+                let db_display = source_db.display().to_string();
                 info!("Migrating wallet database at {db_display}");
                 match migrate_wallet_database(&source_db) {
                     Ok(()) => self.migration.tick(),
                     Err(e) => {
                         error!("Failed to migrate wallet database {db_display}: {e:#}");
-                        errors.push(format!("{db_display}: {e:#}"));
+                        failures.push((db_display, format!("{e:#}")));
                         // tick even on failure to keep progress bar advancing and prevent watchdog timeout
                         self.migration.tick();
                     }
@@ -535,20 +547,18 @@ impl WalletMigration {
                 // already encrypted by old migration code, just rename to new path
                 let source_db = wallet_dir.join(LEGACY_WALLET_DB);
                 let dest_db = wallet_dir.join(ENCRYPTED_WALLET_DB);
-                let db_display = source_db.display();
+                let db_display = source_db.display().to_string();
                 info!("Legacy wallet DB at {db_display} already encrypted, renaming");
                 if let Err(e) = std::fs::rename(&source_db, &dest_db) {
                     error!("Failed to rename already-encrypted wallet DB {db_display}: {e:#}");
-                    errors.push(format!("{db_display}: {e:#}"));
+                    failures.push((db_display, format!("{e:#}")));
                 }
                 self.migration.tick();
             }
         }
 
-        if !errors.is_empty() {
-            let count = errors.len();
-            let details = errors.join("; ");
-            eyre::bail!("failed to migrate {count} wallet database(s): {details}");
+        if !failures.is_empty() {
+            return Err(WalletMigrationError::Failed { failures }.into());
         }
 
         Ok(())
@@ -1148,8 +1158,12 @@ mod tests {
         let result = WalletMigration::with_dir(dir.path().to_path_buf(), migration).run();
 
         assert!(result.is_err());
-        let err_msg = format!("{:#}", result.unwrap_err());
-        assert!(err_msg.contains("cancelled"), "error should mention cancellation: {err_msg}");
+        assert!(
+            result
+                .unwrap_err()
+                .downcast_ref::<WalletMigrationError>()
+                .is_some_and(|e| matches!(e, WalletMigrationError::Cancelled))
+        );
     }
 
     #[test]
@@ -1190,8 +1204,18 @@ mod tests {
 
         // should report error for the bad wallet
         assert!(result.is_err());
-        let err_msg = format!("{:#}", result.unwrap_err());
-        assert!(err_msg.contains("wallet_bad"), "error should mention the bad wallet: {err_msg}");
+        let err = result.unwrap_err();
+        let migration_err =
+            err.downcast_ref::<WalletMigrationError>().expect("should be WalletMigrationError");
+        match migration_err {
+            WalletMigrationError::Failed { failures } => {
+                assert!(
+                    failures.iter().any(|(path, _)| path.contains("wallet_bad")),
+                    "error should mention the bad wallet"
+                );
+            }
+            other => panic!("expected WalletMigrationError::Failed, got: {other}"),
+        }
 
         // both databases should tick (even the failed one) to keep watchdog happy
         assert_eq!(migration.progress().current, 2, "should tick for both success and failure");

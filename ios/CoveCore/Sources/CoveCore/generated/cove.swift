@@ -19172,6 +19172,8 @@ enum DatabaseError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError 
     case DatabaseAlreadyOpen
     case HeaderIntegrity(path: String, error: String
     )
+    case UnsupportedVersion(path: String, version: UInt8
+    )
     case PlaintextNotAllowed(path: String
     )
 
@@ -19258,7 +19260,11 @@ public struct FfiConverterTypeDatabaseError: FfiConverterRustBuffer {
             path: try FfiConverterString.read(from: &buf), 
             error: try FfiConverterString.read(from: &buf)
             )
-        case 17: return .PlaintextNotAllowed(
+        case 17: return .UnsupportedVersion(
+            path: try FfiConverterString.read(from: &buf), 
+            version: try FfiConverterUInt8.read(from: &buf)
+            )
+        case 18: return .PlaintextNotAllowed(
             path: try FfiConverterString.read(from: &buf)
             )
 
@@ -19353,8 +19359,14 @@ public struct FfiConverterTypeDatabaseError: FfiConverterRustBuffer {
             FfiConverterString.write(error, into: &buf)
             
         
-        case let .PlaintextNotAllowed(path):
+        case let .UnsupportedVersion(path,version):
             writeInt(&buf, Int32(17))
+            FfiConverterString.write(path, into: &buf)
+            FfiConverterUInt8.write(version, into: &buf)
+            
+        
+        case let .PlaintextNotAllowed(path):
+            writeInt(&buf, Int32(18))
             FfiConverterString.write(path, into: &buf)
             
         }
@@ -28616,6 +28628,8 @@ enum WalletDataError: Swift.Error, Equatable, Hashable, Foundation.LocalizedErro
     )
     case Save(String
     )
+    case UnsupportedVersion(id: WalletId, path: String, version: UInt8
+    )
 
     
 
@@ -28669,6 +28683,11 @@ public struct FfiConverterTypeWalletDataError: FfiConverterRustBuffer {
         case 4: return .Save(
             try FfiConverterString.read(from: &buf)
             )
+        case 5: return .UnsupportedVersion(
+            id: try FfiConverterTypeWalletId.read(from: &buf), 
+            path: try FfiConverterString.read(from: &buf), 
+            version: try FfiConverterUInt8.read(from: &buf)
+            )
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -28701,6 +28720,13 @@ public struct FfiConverterTypeWalletDataError: FfiConverterRustBuffer {
         case let .Save(v1):
             writeInt(&buf, Int32(4))
             FfiConverterString.write(v1, into: &buf)
+            
+        
+        case let .UnsupportedVersion(id,path,version):
+            writeInt(&buf, Int32(5))
+            FfiConverterTypeWalletId.write(id, into: &buf)
+            FfiConverterString.write(path, into: &buf)
+            FfiConverterUInt8.write(version, into: &buf)
             
         }
     }

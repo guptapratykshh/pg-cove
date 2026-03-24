@@ -13,6 +13,18 @@ use cove_common::consts::ROOT_DATA_DIR;
 
 use super::log_remove_file;
 
+#[derive(Debug, thiserror::Error)]
+enum BdkMigrationError {
+    #[error("BDK migration cancelled")]
+    Cancelled,
+
+    #[error("failed to migrate {} BDK database(s)", .failures.len())]
+    Failed {
+        /// (db_path_display, error_message)
+        failures: Vec<(String, String)>,
+    },
+}
+
 pub struct BdkMigration {
     dir: PathBuf,
     migration: Arc<Migration>,
@@ -32,26 +44,26 @@ impl BdkMigration {
             }
         };
 
-        let mut errors: Vec<String> = Vec::new();
+        let mut failures: Vec<(String, String)> = Vec::new();
 
         for entry in entries {
             if self.migration.is_cancelled() {
                 info!("BDK migration cancelled after partial progress");
-                bail!("BDK migration cancelled");
+                return Err(BdkMigrationError::Cancelled.into());
             }
 
             let entry = entry.context("failed to read directory entry during BDK migration")?;
             let path = entry.path();
 
             if needs_bdk_migration(&path) {
-                let db_display = path.display();
+                let db_display = path.display().to_string();
                 info!("Migrating BDK database at {db_display}");
 
                 match migrate_single_bdk_database(&path) {
                     Ok(()) => self.migration.tick(),
                     Err(e) => {
                         error!("Failed to migrate BDK database {db_display}: {e:#}");
-                        errors.push(format!("{db_display}: {e:#}"));
+                        failures.push((db_display, format!("{e:#}")));
 
                         // tick even on failure to keep progress bar advancing and prevent watchdog timeout
                         self.migration.tick();
@@ -60,10 +72,8 @@ impl BdkMigration {
             }
         }
 
-        if !errors.is_empty() {
-            let count = errors.len();
-            let details = errors.join("; ");
-            bail!("failed to migrate {count} BDK database(s): {details}");
+        if !failures.is_empty() {
+            return Err(BdkMigrationError::Failed { failures }.into());
         }
 
         Ok(())
@@ -825,8 +835,18 @@ mod tests {
 
         // both databases should tick (even the failed one) to keep watchdog happy
         assert_eq!(migration.progress().current, 2, "should tick for both success and failure");
-        let err_msg = format!("{:#}", result.unwrap_err());
-        assert!(err_msg.contains("bdk_wallet_sqlite_bad.db"), "error should mention the bad DB");
+        let err = result.unwrap_err();
+        let migration_err =
+            err.downcast_ref::<BdkMigrationError>().expect("should be BdkMigrationError");
+        match migration_err {
+            BdkMigrationError::Failed { failures } => {
+                assert!(
+                    failures.iter().any(|(path, _)| path.contains("bdk_wallet_sqlite_bad.db")),
+                    "error should mention the bad DB"
+                );
+            }
+            other => panic!("expected BdkMigrationError::Failed, got: {other}"),
+        }
 
         // good DB should still have been migrated
         assert!(!is_plaintext_sqlite(&good_path), "good DB should be encrypted");
@@ -942,8 +962,12 @@ mod tests {
         let result = BdkMigration::with_dir(dir.path().to_path_buf(), migration).run();
 
         assert!(result.is_err());
-        let err_msg = format!("{:#}", result.unwrap_err());
-        assert!(err_msg.contains("cancelled"), "error should mention cancellation: {err_msg}");
+        assert!(
+            result
+                .unwrap_err()
+                .downcast_ref::<BdkMigrationError>()
+                .is_some_and(|e| matches!(e, BdkMigrationError::Cancelled))
+        );
     }
 
     #[test]
@@ -981,8 +1005,12 @@ mod tests {
         // (cancellation is cooperative — checked between database operations)
         if progress.current < 3 {
             assert!(result.is_err());
-            let err_msg = format!("{:#}", result.unwrap_err());
-            assert!(err_msg.contains("cancelled"), "error should mention cancellation: {err_msg}");
+            assert!(
+                result
+                    .unwrap_err()
+                    .downcast_ref::<BdkMigrationError>()
+                    .is_some_and(|e| matches!(e, BdkMigrationError::Cancelled))
+            );
         }
     }
 
