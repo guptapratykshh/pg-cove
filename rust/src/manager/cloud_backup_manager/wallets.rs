@@ -4,6 +4,7 @@ use cove_cspp::CsppStore as _;
 use cove_cspp::backup_data::{
     DescriptorPair, WalletEntry, WalletMode, WalletSecret as CloudWalletSecret, wallet_record_id,
 };
+use cove_cspp::master_key_crypto;
 use cove_cspp::wallet_crypto;
 use cove_device::cloud_storage::CloudStorage;
 use cove_device::keychain::Keychain;
@@ -113,6 +114,163 @@ pub(super) fn create_prf_key_without_persisting(
         .map_err(|_| CloudBackupError::Internal("PRF output is not 32 bytes".into()))?;
 
     Ok(UnpersistedPrfKey { prf_key, prf_salt, credential_id })
+}
+
+#[allow(dead_code)]
+pub(super) struct NamespaceMatch {
+    pub(super) namespace_id: String,
+    pub(super) master_key: cove_cspp::master_key::MasterKey,
+    pub(super) prf_key: [u8; 32],
+    pub(super) prf_salt: [u8; 32],
+    pub(super) credential_id: Vec<u8>,
+}
+
+pub(super) enum NamespaceMatchOutcome {
+    /// User's passkey decrypted a namespace's master key
+    Matched(NamespaceMatch),
+    /// User cancelled the picker or biometric, or no credentials on device
+    UserDeclined,
+    /// All downloaded v1 backups tried, none matched, no issues
+    NoMatch,
+    /// Some namespaces couldn't be downloaded — result is inconclusive
+    Inconclusive,
+    /// Some/all namespaces had unsupported version — app may be too old
+    UnsupportedVersions,
+}
+
+/// Try to match a discovered passkey against cloud namespaces
+///
+/// Downloads all encrypted master keys, then does a discovery auth with the first
+/// v1 backup's salt. If that doesn't match, does targeted auth against remaining
+/// namespaces with each one's own salt (one biometric per additional namespace)
+pub(super) fn try_match_namespace_with_passkey(
+    cloud: &CloudStorage,
+    passkey: &PasskeyAccess,
+    namespaces: &[String],
+) -> Result<NamespaceMatchOutcome, CloudBackupError> {
+    if namespaces.is_empty() {
+        return Ok(NamespaceMatchOutcome::NoMatch);
+    }
+
+    // download all encrypted master key backups
+    let mut downloaded: Vec<(String, cove_cspp::backup_data::EncryptedMasterKeyBackup)> =
+        Vec::with_capacity(namespaces.len());
+    let mut had_download_failures = false;
+    let mut had_unsupported_versions = false;
+
+    for ns in namespaces {
+        let master_json = match cloud.download_master_key_backup(ns.clone()) {
+            Ok(json) => json,
+            Err(error) => {
+                warn!("Failed to download master key for namespace {ns}: {error}");
+                had_download_failures = true;
+                continue;
+            }
+        };
+
+        let encrypted: cove_cspp::backup_data::EncryptedMasterKeyBackup =
+            match serde_json::from_slice(&master_json) {
+                Ok(e) => e,
+                Err(error) => {
+                    warn!("Failed to deserialize master key for namespace {ns}: {error}");
+                    had_download_failures = true;
+                    continue;
+                }
+            };
+
+        if encrypted.version != 1 {
+            had_unsupported_versions = true;
+            continue;
+        }
+
+        downloaded.push((ns.clone(), encrypted));
+    }
+
+    if downloaded.is_empty() {
+        return if had_download_failures {
+            Ok(NamespaceMatchOutcome::Inconclusive)
+        } else {
+            Ok(NamespaceMatchOutcome::UnsupportedVersions)
+        };
+    }
+
+    // discovery auth with first downloaded backup's salt
+    let first_prf_salt = downloaded[0].1.prf_salt;
+    let challenge: Vec<u8> = rand::rng().random::<[u8; 32]>().to_vec();
+
+    let discovered = match passkey.discover_and_authenticate_with_prf(
+        RP_ID.to_string(),
+        first_prf_salt.to_vec(),
+        challenge,
+    ) {
+        Ok(result) => result,
+        Err(cove_device::passkey::PasskeyError::UserCancelled)
+        | Err(cove_device::passkey::PasskeyError::NoCredentialFound) => {
+            return Ok(NamespaceMatchOutcome::UserDeclined);
+        }
+        Err(error) => return Err(CloudBackupError::Passkey(error.to_string())),
+    };
+
+    let prf_key: [u8; 32] = discovered
+        .prf_output
+        .try_into()
+        .map_err(|_| CloudBackupError::Internal("PRF output is not 32 bytes".into()))?;
+
+    // try first backup
+    if let Ok(master_key) = master_key_crypto::decrypt_master_key(&downloaded[0].1, &prf_key) {
+        return Ok(NamespaceMatchOutcome::Matched(NamespaceMatch {
+            namespace_id: downloaded[0].0.clone(),
+            master_key,
+            prf_key,
+            prf_salt: first_prf_salt,
+            credential_id: discovered.credential_id,
+        }));
+    }
+
+    // try remaining with targeted auth using each namespace's own salt
+    for (ns, encrypted) in &downloaded[1..] {
+        let challenge: Vec<u8> = rand::rng().random::<[u8; 32]>().to_vec();
+
+        let ns_prf_output = match passkey.authenticate_with_prf(
+            RP_ID.to_string(),
+            discovered.credential_id.clone(),
+            encrypted.prf_salt.to_vec(),
+            challenge,
+        ) {
+            Ok(output) => output,
+            Err(cove_device::passkey::PasskeyError::UserCancelled) => {
+                return Ok(NamespaceMatchOutcome::UserDeclined);
+            }
+            Err(error) => {
+                warn!("Targeted auth failed for namespace {ns}: {error}");
+                continue;
+            }
+        };
+
+        let ns_prf_key: [u8; 32] = match ns_prf_output.try_into() {
+            Ok(key) => key,
+            Err(_) => continue,
+        };
+
+        if let Ok(master_key) = master_key_crypto::decrypt_master_key(encrypted, &ns_prf_key) {
+            return Ok(NamespaceMatchOutcome::Matched(NamespaceMatch {
+                namespace_id: ns.clone(),
+                master_key,
+                prf_key: ns_prf_key,
+                prf_salt: encrypted.prf_salt,
+                credential_id: discovered.credential_id.clone(),
+            }));
+        }
+    }
+
+    // none matched
+    if had_download_failures {
+        Ok(NamespaceMatchOutcome::Inconclusive)
+    } else if had_unsupported_versions {
+        Ok(NamespaceMatchOutcome::UnsupportedVersions)
+    } else {
+        Ok(NamespaceMatchOutcome::NoMatch)
+    }
 }
 
 /// Encrypt and hand off all local wallets to the given namespace
@@ -292,6 +450,57 @@ pub(super) fn obtain_prf_key(
         .map_err_prefix("save prf_salt", CloudBackupError::Internal)?;
 
     Ok((prf_key, prf_salt))
+}
+
+/// Try to discover an existing passkey, fall back to creating a new one
+///
+/// Shows the full passkey picker (including 1Password). If the user picks
+/// an existing passkey, uses it with a fresh random salt. If the user cancels
+/// or no credentials are available, creates a new passkey via obtain_prf_key
+pub(super) fn discover_or_create_prf_key(
+    keychain: &Keychain,
+    passkey: &PasskeyAccess,
+) -> Result<([u8; 32], [u8; 32]), CloudBackupError> {
+    info!("Attempting passkey discovery before creating new");
+    let prf_salt: [u8; 32] = rand::rng().random();
+    let challenge: Vec<u8> = rand::rng().random::<[u8; 32]>().to_vec();
+
+    match passkey.discover_and_authenticate_with_prf(
+        RP_ID.to_string(),
+        prf_salt.to_vec(),
+        challenge,
+    ) {
+        Ok(discovered) => {
+            let prf_key: [u8; 32] = discovered
+                .prf_output
+                .try_into()
+                .map_err(|_| CloudBackupError::Internal("PRF output is not 32 bytes".into()))?;
+
+            info!("Discovered existing passkey, reusing");
+            keychain.delete(CREDENTIAL_ID_KEY.to_string());
+            keychain.delete(PRF_SALT_KEY.to_string());
+            keychain
+                .save(CREDENTIAL_ID_KEY.to_string(), hex::encode(&discovered.credential_id))
+                .map_err_prefix("save credential", CloudBackupError::Internal)?;
+            keychain
+                .save(PRF_SALT_KEY.to_string(), hex::encode(prf_salt))
+                .map_err_prefix("save prf_salt", CloudBackupError::Internal)?;
+
+            Ok((prf_key, prf_salt))
+        }
+        Err(cove_device::passkey::PasskeyError::UserCancelled) => {
+            info!("User cancelled passkey picker, creating new passkey");
+            obtain_prf_key(keychain, passkey)
+        }
+        Err(cove_device::passkey::PasskeyError::NoCredentialFound) => {
+            info!("No existing passkey found, creating new");
+            obtain_prf_key(keychain, passkey)
+        }
+        Err(error) => {
+            warn!("Discovery failed ({error}), falling back to create");
+            obtain_prf_key(keychain, passkey)
+        }
+    }
 }
 
 pub(super) fn convert_cloud_secret(secret: &CloudWalletSecret) -> LocalWalletSecret {

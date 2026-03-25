@@ -94,6 +94,14 @@ impl<S: CsppStore> Cspp<S> {
         self.get_master_key()
     }
 
+    /// Deletes the master key and its encryption key from the store
+    ///
+    /// Used by debug reset to fully clear CSPP state
+    pub fn delete_master_key(&self) {
+        self.0.delete(MASTER_KEY_NAME.into());
+        self.0.delete(MASTER_KEY_ENCRYPTION_KEY_AND_NONCE.into());
+    }
+
     /// Checks whether the master key exists in the store without decrypting it
     pub fn has_master_key(&self) -> bool {
         self.0.get(MASTER_KEY_NAME.into()).is_some()

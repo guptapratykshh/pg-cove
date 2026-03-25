@@ -258,9 +258,9 @@ struct MainSettingsScreen: View {
     @ViewBuilder
     var CloudBackupSection: some View {
         if !auth.isInDecoyMode() {
-            Section(header: Text("Cloud Backup")) {
-                let manager = CloudBackupManager.shared
+            @Bindable var manager = CloudBackupManager.shared
 
+            Section(header: Text("Cloud Backup")) {
                 switch manager.state {
                 case .disabled:
                     SettingsRow(title: "Enable Cloud Backup", symbol: "icloud.and.arrow.up") {
@@ -319,6 +319,17 @@ struct MainSettingsScreen: View {
                         manager.rust.enableCloudBackup()
                     }
                 }
+            }
+            .confirmationDialog(
+                "Existing Cloud Backup Found",
+                isPresented: $manager.showExistingBackupWarning
+            ) {
+                Button("Create New Backup", role: .destructive) {
+                    manager.rust.enableCloudBackupForceNew()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Creating a new backup will not include wallets from the previous one.")
             }
         }
     }

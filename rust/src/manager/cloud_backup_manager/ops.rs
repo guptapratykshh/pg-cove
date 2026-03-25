@@ -4,12 +4,12 @@ use cove_device::cloud_storage::CloudStorage;
 use cove_device::keychain::Keychain;
 use cove_device::passkey::PasskeyAccess;
 use cove_util::ResultExt as _;
-use rand::RngExt as _;
 use tracing::{info, warn};
 use zeroize::Zeroizing;
 
 use super::wallets::{
-    all_local_wallets, obtain_prf_key, persist_enabled_cloud_backup_state, restore_single_wallet,
+    NamespaceMatchOutcome, all_local_wallets, discover_or_create_prf_key,
+    persist_enabled_cloud_backup_state, restore_single_wallet, try_match_namespace_with_passkey,
     upload_all_wallets,
 };
 use super::{
@@ -234,16 +234,120 @@ impl RustCloudBackupManager {
             ));
         }
 
+        let keychain = Keychain::global();
+        let cspp = cove_cspp::Cspp::new(keychain.clone());
+        let cloud = CloudStorage::global();
+
+        let has_local_master_key = cspp
+            .load_master_key_from_store()
+            .map_err_prefix("load local master key", CloudBackupError::Internal)?
+            .is_some();
+
+        if has_local_master_key {
+            return self.do_enable_cloud_backup_create_new();
+        }
+
+        // no local master key — check iCloud for existing namespaces to recover
+        let namespaces = cloud
+            .list_namespaces()
+            .map_err(|e| CloudBackupError::Cloud(format!(
+                "could not check for existing cloud backups, please try again when iCloud is available: {e}"
+            )))?;
+
+        if namespaces.is_empty() {
+            return self.do_enable_cloud_backup_create_new();
+        }
+
+        info!("Enable: found {} existing namespace(s), attempting recovery", namespaces.len());
+
+        match try_match_namespace_with_passkey(cloud, passkey, &namespaces)? {
+            NamespaceMatchOutcome::Matched(matched) => {
+                self.complete_recovery(keychain, cloud, &cspp, matched)
+            }
+
+            NamespaceMatchOutcome::UserDeclined | NamespaceMatchOutcome::NoMatch => {
+                info!("Enable: existing backups found but not recovered, asking user to confirm");
+                self.send(Message::ExistingBackupFound);
+                self.send(Message::StateChanged(CloudBackupState::Disabled));
+                Ok(())
+            }
+
+            NamespaceMatchOutcome::Inconclusive => Err(CloudBackupError::Cloud(
+                "could not verify all cloud backups, please try again when iCloud is available"
+                    .into(),
+            )),
+
+            NamespaceMatchOutcome::UnsupportedVersions => Err(CloudBackupError::Internal(
+                "some cloud backups use a newer format, please update the app to access all backups"
+                    .into(),
+            )),
+        }
+    }
+
+    /// Complete recovery from a matched cloud namespace
+    fn complete_recovery(
+        &self,
+        keychain: &Keychain,
+        cloud: &CloudStorage,
+        cspp: &cove_cspp::Cspp<Keychain>,
+        matched: super::wallets::NamespaceMatch,
+    ) -> Result<(), CloudBackupError> {
+        info!("Enable: recovered namespace {}", matched.namespace_id);
+
+        cspp.save_master_key(&matched.master_key)
+            .map_err_prefix("save recovered master key", CloudBackupError::Internal)?;
+        cove_cspp::reset_master_key_cache();
+
+        let critical_key = Zeroizing::new(matched.master_key.critical_data_key());
+        let db = Database::global();
+        let uploaded_wallet_record_ids =
+            upload_all_wallets(cloud, &matched.namespace_id, &critical_key, &db)?;
+
+        // get accurate wallet count from cloud (includes pre-existing + uploaded)
+        let wallet_count = cloud
+            .list_wallet_backups(matched.namespace_id.clone())
+            .map(|ids| ids.len() as u32)
+            .unwrap_or(uploaded_wallet_record_ids.len() as u32);
+
+        // persist credentials AFTER uploads succeed
+        keychain
+            .save(CREDENTIAL_ID_KEY.to_string(), hex::encode(&matched.credential_id))
+            .map_err_prefix("save credential_id", CloudBackupError::Internal)?;
+        keychain
+            .save(PRF_SALT_KEY.to_string(), hex::encode(matched.prf_salt))
+            .map_err_prefix("save prf_salt", CloudBackupError::Internal)?;
+        keychain
+            .save(NAMESPACE_ID_KEY.into(), matched.namespace_id.clone())
+            .map_err_prefix("save namespace_id", CloudBackupError::Internal)?;
+
+        persist_enabled_cloud_backup_state(&db, wallet_count)?;
+        self.enqueue_pending_uploads(&matched.namespace_id, uploaded_wallet_record_ids)?;
+
+        self.send(Message::EnableComplete);
+        self.send(Message::StateChanged(CloudBackupState::Enabled));
+        info!("Cloud backup enabled (recovered existing namespace)");
+        Ok(())
+    }
+
+    /// Create a new cloud backup from scratch — no recovery attempt
+    ///
+    /// Called directly when `do_enable_cloud_backup` determines no recovery is needed,
+    /// or via `do_enable_cloud_backup_force_new` when the user confirms creating a
+    /// new backup after being warned about existing ones
+    pub(crate) fn do_enable_cloud_backup_create_new(&self) -> Result<(), CloudBackupError> {
+        let passkey = PasskeyAccess::global();
+        let keychain = Keychain::global();
+        let cloud = CloudStorage::global();
+
         info!("Enable: getting master key");
-        let cspp = cove_cspp::Cspp::new(Keychain::global().clone());
+        let cspp = cove_cspp::Cspp::new(keychain.clone());
         let master_key = cspp
             .get_or_create_master_key()
             .map_err_prefix("master key", CloudBackupError::Internal)?;
 
         let namespace_id = master_key.namespace_id();
-        info!("Enable: namespace_id={namespace_id}, creating passkey");
-        let keychain = Keychain::global();
-        let (prf_key, prf_salt) = obtain_prf_key(keychain, passkey)?;
+        info!("Enable: namespace_id={namespace_id}, getting passkey");
+        let (prf_key, prf_salt) = discover_or_create_prf_key(keychain, passkey)?;
 
         info!("Enable: passkey created, encrypting master key");
         let encrypted_master =
@@ -254,7 +358,6 @@ impl RustCloudBackupManager {
             serde_json::to_vec(&encrypted_master).map_err_str(CloudBackupError::Internal)?;
 
         info!("Enable: uploading master key");
-        let cloud = CloudStorage::global();
         cloud
             .upload_master_key_backup(namespace_id.clone(), master_json)
             .map_err_str(CloudBackupError::Cloud)?;
@@ -296,80 +399,31 @@ impl RustCloudBackupManager {
             return Err(CloudBackupError::Internal("no cloud backup namespaces found".into()));
         }
 
-        info!("Restore: authenticating with passkey");
-        let first_namespace = &namespaces[0];
-        let first_master_json = cloud
-            .download_master_key_backup(first_namespace.clone())
-            .map_err_str(CloudBackupError::Cloud)?;
-        let first_encrypted: cove_cspp::backup_data::EncryptedMasterKeyBackup =
-            serde_json::from_slice(&first_master_json).map_err_str(CloudBackupError::Internal)?;
+        info!("Restore: authenticating with passkey across {} namespace(s)", namespaces.len());
 
-        if first_encrypted.version != 1 {
-            return Err(CloudBackupError::Internal(format!(
-                "unsupported master key backup version: {}",
-                first_encrypted.version
-            )));
-        }
-
-        let prf_salt = first_encrypted.prf_salt;
-        let challenge: Vec<u8> = rand::rng().random::<[u8; 32]>().to_vec();
-        let discovered = passkey
-            .discover_and_authenticate_with_prf(
-                super::RP_ID.to_string(),
-                prf_salt.to_vec(),
-                challenge,
-            )
-            .map_err_str(CloudBackupError::Passkey)?;
-
-        let prf_key: [u8; 32] = discovered
-            .prf_output
-            .try_into()
-            .map_err(|_| CloudBackupError::Internal("PRF output is not 32 bytes".into()))?;
-
-        let mut matched_namespace: Option<String> = None;
-        let mut master_key: Option<cove_cspp::master_key::MasterKey> = None;
-
-        for namespace in &namespaces {
-            let master_json = if namespace == first_namespace {
-                first_master_json.clone()
-            } else {
-                match cloud.download_master_key_backup(namespace.clone()) {
-                    Ok(json) => json,
-                    Err(error) => {
-                        warn!("Failed to download master key for namespace {namespace}: {error}");
-                        continue;
-                    }
-                }
-            };
-
-            let encrypted: cove_cspp::backup_data::EncryptedMasterKeyBackup =
-                match serde_json::from_slice(&master_json) {
-                    Ok(encrypted) => encrypted,
-                    Err(error) => {
-                        warn!(
-                            "Failed to deserialize master key for namespace {namespace}: {error}"
-                        );
-                        continue;
-                    }
-                };
-
-            if encrypted.version != 1 {
-                continue;
+        let matched = match try_match_namespace_with_passkey(cloud, passkey, &namespaces)? {
+            NamespaceMatchOutcome::Matched(m) => m,
+            NamespaceMatchOutcome::UserDeclined | NamespaceMatchOutcome::NoMatch => {
+                return Err(CloudBackupError::PasskeyMismatch);
             }
-
-            match cove_cspp::master_key_crypto::decrypt_master_key(&encrypted, &prf_key) {
-                Ok(candidate) => {
-                    info!("Restore: found matching namespace {namespace}");
-                    matched_namespace = Some(namespace.clone());
-                    master_key = Some(candidate);
-                    break;
-                }
-                Err(_) => continue,
+            NamespaceMatchOutcome::Inconclusive => {
+                return Err(CloudBackupError::Cloud(
+                    "could not download all cloud backups, please try again when iCloud is available".into(),
+                ));
             }
-        }
+            NamespaceMatchOutcome::UnsupportedVersions => {
+                return Err(CloudBackupError::Internal(
+                    "some cloud backups use a newer format, please update the app".into(),
+                ));
+            }
+        };
 
-        let matched_namespace = matched_namespace.ok_or(CloudBackupError::PasskeyMismatch)?;
-        let master_key = master_key.expect("matched namespace should set master key");
+        let matched_namespace = matched.namespace_id;
+        let master_key = matched.master_key;
+        let matched_credential_id = matched.credential_id;
+        let matched_prf_salt = matched.prf_salt;
+
+        info!("Restore: matched namespace {matched_namespace}");
 
         let local_master_key = cspp
             .load_master_key_from_store()
@@ -426,10 +480,10 @@ impl RustCloudBackupManager {
                 .save(NAMESPACE_ID_KEY.to_string(), matched_namespace)
                 .map_err_prefix("save namespace_id", CloudBackupError::Internal)?;
             keychain
-                .save(CREDENTIAL_ID_KEY.to_string(), hex::encode(&discovered.credential_id))
+                .save(CREDENTIAL_ID_KEY.to_string(), hex::encode(&matched_credential_id))
                 .map_err_prefix("save credential_id", CloudBackupError::Internal)?;
             keychain
-                .save(PRF_SALT_KEY.to_string(), hex::encode(prf_salt))
+                .save(PRF_SALT_KEY.to_string(), hex::encode(matched_prf_salt))
                 .map_err_prefix("save prf_salt", CloudBackupError::Internal)?;
         }
 

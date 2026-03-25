@@ -17,6 +17,7 @@ final class CloudBackupManager: AnyReconciler, CloudBackupManagerReconciler, @un
     var restoreReport: CloudBackupRestoreReport?
     var syncError: String?
     var hasPendingUploadVerification = false
+    var showExistingBackupWarning = false
 
     private init() {
         let rust = RustCloudBackupManager()
@@ -41,6 +42,8 @@ final class CloudBackupManager: AnyReconciler, CloudBackupManagerReconciler, @un
             syncError = error
         case let .pendingUploadVerificationChanged(pending):
             hasPendingUploadVerification = pending
+        case .existingBackupFound:
+            showExistingBackupWarning = true
         }
     }
 

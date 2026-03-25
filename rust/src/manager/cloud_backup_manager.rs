@@ -51,6 +51,7 @@ pub enum CloudBackupReconcileMessage {
     RestoreComplete(CloudBackupRestoreReport),
     SyncFailed(String),
     PendingUploadVerificationChanged { pending: bool },
+    ExistingBackupFound,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -118,16 +119,23 @@ pub struct DeepVerificationReport {
     pub detail: Option<CloudBackupDetail>,
 }
 
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct DeepVerificationFailure {
+    pub kind: VerificationFailureKind,
+    pub message: String,
+    pub detail: Option<CloudBackupDetail>,
+}
+
 #[derive(Debug, Clone, uniffi::Enum)]
-pub enum DeepVerificationFailure {
+pub enum VerificationFailureKind {
     /// Transient iCloud/network/passkey error — safe to retry
-    Retry { message: String, detail: Option<CloudBackupDetail> },
+    Retry,
     /// Manifest missing, master key verified intact — recreate from local wallets
-    RecreateManifest { message: String, detail: Option<CloudBackupDetail>, warning: String },
+    RecreateManifest { warning: String },
     /// No verified cloud or local master key available — full re-enable needed
-    ReinitializeBackup { message: String, detail: Option<CloudBackupDetail>, warning: String },
+    ReinitializeBackup { warning: String },
     /// Backup uses a newer format — do not overwrite
-    UnsupportedVersion { message: String, detail: Option<CloudBackupDetail> },
+    UnsupportedVersion,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -296,13 +304,18 @@ impl RustCloudBackupManager {
         keychain.delete(CREDENTIAL_ID_KEY.to_string());
         keychain.delete(PRF_SALT_KEY.to_string());
 
+        // also delete the master key so next enable starts clean
+        let cspp = cove_cspp::Cspp::new(keychain.clone());
+        cspp.delete_master_key();
+        cove_cspp::reset_master_key_cache();
+
         let db = Database::global();
         let _ = db.global_config.set_cloud_backup(&CloudBackup::Disabled);
         let _ = db.cloud_backup_upload_verification.delete();
 
         self.send(Message::StateChanged(CloudBackupState::Disabled));
         self.send(Message::PendingUploadVerificationChanged { pending: false });
-        info!("Debug: reset cloud backup local state");
+        info!("Debug: reset cloud backup local state (including master key)");
     }
 
     /// Background startup health check for cloud backup integrity
@@ -327,6 +340,29 @@ impl RustCloudBackupManager {
         cove_tokio::task::spawn_blocking(move || {
             if let Err(error) = this.do_enable_cloud_backup() {
                 error!("Cloud backup enable failed: {error}");
+                this.send(Message::StateChanged(CloudBackupState::Error(error.to_string())));
+            }
+        });
+    }
+
+    /// Enable cloud backup, skipping recovery — creates a new namespace
+    ///
+    /// Called after the user confirms they want a new backup when existing cloud
+    /// backups were found but not recovered (UserDeclined or NoMatch)
+    pub fn enable_cloud_backup_force_new(&self) {
+        {
+            let state = self.state.read();
+            if matches!(*state, CloudBackupState::Enabling | CloudBackupState::Restoring) {
+                warn!("enable_cloud_backup_force_new called while {state:?}, ignoring");
+                return;
+            }
+        }
+
+        let this = CLOUD_BACKUP_MANAGER.clone();
+        cove_tokio::task::spawn_blocking(move || {
+            this.send(Message::StateChanged(CloudBackupState::Enabling));
+            if let Err(error) = this.do_enable_cloud_backup_create_new() {
+                error!("Cloud backup force-new enable failed: {error}");
                 this.send(Message::StateChanged(CloudBackupState::Error(error.to_string())));
             }
         });

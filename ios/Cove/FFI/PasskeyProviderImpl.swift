@@ -192,9 +192,7 @@ final class PasskeyProviderImpl: PasskeyProvider, @unchecked Sendable {
             let ctrl = ASAuthorizationController(authorizationRequests: [request])
             ctrl.delegate = delegate
             ctrl.presentationContextProvider = delegate
-            ctrl.performRequests(
-                options: .preferImmediatelyAvailableCredentials
-            )
+            ctrl.performRequests()
             return ctrl
         }
 

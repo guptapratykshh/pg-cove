@@ -171,14 +171,7 @@ impl RustCloudBackupDetailManager {
             }
             DeepVerificationResult::NotEnabled => {}
             DeepVerificationResult::Failed(failure) => {
-                let detail = match &failure {
-                    DeepVerificationFailure::Retry { detail, .. }
-                    | DeepVerificationFailure::RecreateManifest { detail, .. }
-                    | DeepVerificationFailure::ReinitializeBackup { detail, .. }
-                    | DeepVerificationFailure::UnsupportedVersion { detail, .. } => detail.clone(),
-                };
-
-                if let Some(detail) = detail {
+                if let Some(detail) = failure.detail.clone() {
                     self.send(Message::DetailUpdated(detail));
                 }
                 self.send(Message::VerificationChanged(VerificationState::Failed(failure)));
