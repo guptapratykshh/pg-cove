@@ -120,10 +120,10 @@ final class PasskeyProviderImpl: PasskeyProvider, @unchecked Sendable {
         return prfOutput.prefix(32)
     }
 
-    func checkPasskeyExists(rpId: String, credentialId: Data) -> Bool {
+    func checkPasskeyPresence(rpId: String, credentialId: Data) -> PasskeyCredentialPresence {
         precondition(
             !Thread.isMainThread,
-            "checkPasskeyExists must not be called from the main thread"
+            "checkPasskeyPresence must not be called from the main thread"
         )
 
         let delegate = PasskeyExistenceDelegate()
@@ -151,17 +151,17 @@ final class PasskeyProviderImpl: PasskeyProvider, @unchecked Sendable {
             return ctrl
         }
 
-        // .notInteractive returns almost instantly when no credential exists
-        // if nothing comes back quickly, the credential exists and Face ID
-        // is being prepared — cancel before it appears
-        let gotResult = delegate.semaphore.wait(timeout: .now() + 0.3)
+        // .notInteractive returns almost instantly when no credential exists.
+        // if iOS doesn't respond quickly enough to prove presence or absence,
+        // treat the result as indeterminate instead of assuming success.
+        let gotResult = delegate.semaphore.wait(timeout: .now() + 1.0)
 
         if gotResult == .timedOut {
             DispatchQueue.main.async { controller.cancel() }
-            return true
+            return .indeterminate
         }
 
-        return delegate.credentialExists
+        return delegate.presence
     }
 
     func discoverAndAuthenticateWithPrf(
@@ -285,12 +285,12 @@ private class PasskeyDelegate: NSObject, ASAuthorizationControllerDelegate,
 /// Lightweight delegate for non-interactive passkey existence checks
 ///
 /// Only cares about whether the credential exists, not the actual assertion.
-/// `.notInteractive` (code 1005) means no matching credential — no UI was shown
+/// `.notInteractive` means no matching credential and no UI was shown
 private class PasskeyExistenceDelegate: NSObject, ASAuthorizationControllerDelegate,
     ASAuthorizationControllerPresentationContextProviding
 {
     let semaphore = DispatchSemaphore(value: 0)
-    var credentialExists = false
+    var presence: PasskeyCredentialPresence = .indeterminate
 
     func presentationAnchor(for _: ASAuthorizationController) -> ASPresentationAnchor {
         let scenes = UIApplication.shared.connectedScenes
@@ -302,7 +302,7 @@ private class PasskeyExistenceDelegate: NSObject, ASAuthorizationControllerDeleg
         controller _: ASAuthorizationController,
         didCompleteWithAuthorization _: ASAuthorization
     ) {
-        credentialExists = true
+        presence = .present
         semaphore.signal()
     }
 
@@ -313,11 +313,7 @@ private class PasskeyExistenceDelegate: NSObject, ASAuthorizationControllerDeleg
         if let authError = error as? ASAuthorizationError,
            authError.code == .notInteractive
         {
-            // no matching credential on device — silent, no UI was shown
-            credentialExists = false
-        } else {
-            // .canceled or other error — credential likely exists
-            credentialExists = true
+            presence = .missing
         }
         semaphore.signal()
     }
