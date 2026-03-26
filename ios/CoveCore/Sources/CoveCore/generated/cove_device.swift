@@ -1306,6 +1306,80 @@ public func FfiConverterTypeKeychainError_lower(_ value: KeychainError) -> RustB
     return FfiConverterTypeKeychainError.lower(value)
 }
 
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+
+public enum PasskeyCredentialPresence: Equatable, Hashable {
+    
+    case present
+    case missing
+    case indeterminate
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension PasskeyCredentialPresence: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePasskeyCredentialPresence: FfiConverterRustBuffer {
+    typealias SwiftType = PasskeyCredentialPresence
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PasskeyCredentialPresence {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .present
+        
+        case 2: return .missing
+        
+        case 3: return .indeterminate
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: PasskeyCredentialPresence, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .present:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .missing:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .indeterminate:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePasskeyCredentialPresence_lift(_ buf: RustBuffer) throws -> PasskeyCredentialPresence {
+    return try FfiConverterTypePasskeyCredentialPresence.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePasskeyCredentialPresence_lower(_ value: PasskeyCredentialPresence) -> RustBuffer {
+    return FfiConverterTypePasskeyCredentialPresence.lower(value)
+}
+
+
 
 public enum PasskeyError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
@@ -2114,10 +2188,10 @@ public protocol PasskeyProvider: AnyObject, Sendable {
      * Non-interactive check whether a passkey credential exists on the device
      *
      * Uses preferImmediatelyAvailableCredentials to silently detect absence
-     * (returns false with no UI). If the passkey exists, cancels before Face ID
-     * appears and returns true
+     * without showing UI. Returns an indeterminate result when iOS fails or
+     * does not respond clearly enough to prove presence or absence
      */
-    func checkPasskeyExists(rpId: String, credentialId: Data)  -> Bool
+    func checkPasskeyPresence(rpId: String, credentialId: Data)  -> PasskeyCredentialPresence
     
 }
 
@@ -2255,26 +2329,26 @@ fileprivate struct UniffiCallbackInterfacePasskeyProvider {
                 writeReturn: writeReturn
             )
         },
-        checkPasskeyExists: { (
+        checkPasskeyPresence: { (
             uniffiHandle: UInt64,
             rpId: RustBuffer,
             credentialId: RustBuffer,
-            uniffiOutReturn: UnsafeMutablePointer<Int8>,
+            uniffiOutReturn: UnsafeMutablePointer<RustBuffer>,
             uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
         ) in
             let makeCall = {
-                () throws -> Bool in
+                () throws -> PasskeyCredentialPresence in
                 guard let uniffiObj = try? FfiConverterCallbackInterfacePasskeyProvider.handleMap.get(handle: uniffiHandle) else {
                     throw UniffiInternalError.unexpectedStaleHandle
                 }
-                return uniffiObj.checkPasskeyExists(
+                return uniffiObj.checkPasskeyPresence(
                      rpId: try FfiConverterString.lift(rpId),
                      credentialId: try FfiConverterData.lift(credentialId)
                 )
             }
 
             
-            let writeReturn = { uniffiOutReturn.pointee = FfiConverterBool.lower($0) }
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterTypePasskeyCredentialPresence_lower($0) }
             uniffiTraitInterfaceCall(
                 callStatus: uniffiCallStatus,
                 makeCall: makeCall,
@@ -2486,7 +2560,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_cove_device_checksum_method_passkeyprovider_is_prf_supported() != 18036) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_cove_device_checksum_method_passkeyprovider_check_passkey_exists() != 37517) {
+    if (uniffi_cove_device_checksum_method_passkeyprovider_check_passkey_presence() != 32325) {
         return InitializationResult.apiChecksumMismatch
     }
 
