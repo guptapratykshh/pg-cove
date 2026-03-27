@@ -75,7 +75,7 @@ struct MissingPasskeyContent: View {
 
         Section {
             Button {
-                manager.repairPasskey()
+                manager.repairPasskeyNoDiscovery()
             } label: {
                 if isRepairing {
                     HStack {
@@ -84,7 +84,7 @@ struct MissingPasskeyContent: View {
                         Text("Opening Passkey Options...")
                     }
                 } else {
-                    Label("Use or Add Passkey", systemImage: "person.badge.key")
+                    Label("Add Passkey", systemImage: "person.badge.key")
                 }
             }
             .disabled(isRepairing)

@@ -9,7 +9,7 @@ use cove_cspp::master_key_crypto;
 use cove_cspp::wallet_crypto;
 use cove_device::cloud_storage::CloudStorage;
 use cove_device::keychain::Keychain;
-use cove_device::passkey::PasskeyAccess;
+use cove_device::passkey::{PasskeyAccess, PasskeyError};
 use cove_types::network::Network;
 use cove_util::ResultExt as _;
 use rand::RngExt as _;
@@ -99,7 +99,7 @@ impl RustCloudBackupManager {
 pub(super) fn create_prf_key_without_persisting(
     passkey: &PasskeyAccess,
 ) -> Result<UnpersistedPrfKey, CloudBackupError> {
-    create_new_prf_key(passkey, "Creating new passkey for wrapper repair")
+    create_new_prf_key_for_wrapper_repair(passkey)
 }
 
 /// Try to discover an existing passkey, fall back to creating a new one
@@ -470,6 +470,41 @@ fn create_new_prf_key(
         .map_err_str(CloudBackupError::Passkey)?;
 
     Ok(UnpersistedPrfKey { prf_key: prf_output_to_key(prf_output)?, prf_salt, credential_id })
+}
+
+fn create_new_prf_key_for_wrapper_repair(
+    passkey: &PasskeyAccess,
+) -> Result<UnpersistedPrfKey, CloudBackupError> {
+    info!("Creating new passkey for wrapper repair");
+    let prf_salt: [u8; 32] = rand::rng().random();
+    let credential_id = passkey
+        .create_passkey(
+            RP_ID.to_string(),
+            rand::rng().random::<[u8; 16]>().to_vec(),
+            random_challenge(),
+        )
+        .map_err(map_wrapper_repair_passkey_error)?;
+
+    let prf_output = passkey
+        .authenticate_with_prf(
+            RP_ID.to_string(),
+            credential_id.clone(),
+            prf_salt.to_vec(),
+            random_challenge(),
+        )
+        .map_err(map_wrapper_repair_passkey_error)?;
+
+    Ok(UnpersistedPrfKey { prf_key: prf_output_to_key(prf_output)?, prf_salt, credential_id })
+}
+
+fn map_wrapper_repair_passkey_error(error: PasskeyError) -> CloudBackupError {
+    match error {
+        PasskeyError::UserCancelled => {
+            info!("User cancelled new passkey flow for wrapper repair");
+            CloudBackupError::PasskeyDiscoveryCancelled
+        }
+        other => CloudBackupError::Passkey(other.to_string()),
+    }
 }
 
 fn prf_output_to_key(prf_output: Vec<u8>) -> Result<[u8; 32], CloudBackupError> {
