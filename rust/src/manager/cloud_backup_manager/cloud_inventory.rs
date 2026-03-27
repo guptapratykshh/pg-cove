@@ -135,6 +135,7 @@ fn local_wallet_item(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::database::cloud_backup::CloudUploadVerificationState;
 
     #[test]
     fn merge_pending_wallet_record_ids_skips_master_key() {
@@ -145,18 +146,20 @@ mod tests {
                 namespace_id: "ns-1".into(),
                 record_id: cspp_master_key_record_id(),
                 enqueued_at: 0,
-                last_checked_at: None,
-                attempt_count: 0,
-                confirmed_at: None,
+                verification: CloudUploadVerificationState::Pending {
+                    attempt_count: 0,
+                    last_checked_at: None,
+                },
             },
             PendingCloudUploadItem {
                 kind: CloudUploadKind::BackupBlob,
                 namespace_id: "ns-1".into(),
                 record_id: "wallet-b".to_string(),
                 enqueued_at: 0,
-                last_checked_at: None,
-                attempt_count: 0,
-                confirmed_at: None,
+                verification: CloudUploadVerificationState::Pending {
+                    attempt_count: 0,
+                    last_checked_at: None,
+                },
             },
         ];
 

@@ -98,16 +98,63 @@ pub enum CloudUploadKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CloudUploadVerificationState {
+    Pending {
+        attempt_count: u32,
+        #[serde(default)]
+        last_checked_at: Option<u64>,
+    },
+    Confirmed(u64),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PendingCloudUploadItem {
     pub kind: CloudUploadKind,
     pub namespace_id: String,
     pub record_id: String,
     pub enqueued_at: u64,
-    pub last_checked_at: Option<u64>,
-    pub attempt_count: u32,
-    /// Set when isBackupUploaded confirms the blob, kept until the listing catches up
-    #[serde(default)]
-    pub confirmed_at: Option<u64>,
+    /// Keeps confirmed blobs until the cloud listing catches up
+    pub verification: CloudUploadVerificationState,
+}
+
+impl PendingCloudUploadItem {
+    pub fn is_confirmed(&self) -> bool {
+        matches!(self.verification, CloudUploadVerificationState::Confirmed(_))
+    }
+
+    pub fn confirmed_at(&self) -> Option<u64> {
+        match self.verification {
+            CloudUploadVerificationState::Confirmed(confirmed_at) => Some(confirmed_at),
+            CloudUploadVerificationState::Pending { .. } => None,
+        }
+    }
+
+    pub fn last_checked_at(&self) -> Option<u64> {
+        match self.verification {
+            CloudUploadVerificationState::Pending { last_checked_at, .. } => last_checked_at,
+            CloudUploadVerificationState::Confirmed(_) => None,
+        }
+    }
+
+    pub fn attempt_count(&self) -> u32 {
+        match self.verification {
+            CloudUploadVerificationState::Pending { attempt_count, .. } => attempt_count,
+            CloudUploadVerificationState::Confirmed(_) => 0,
+        }
+    }
+
+    pub fn confirm(&mut self, confirmed_at: u64) {
+        self.verification = CloudUploadVerificationState::Confirmed(confirmed_at);
+    }
+
+    pub fn mark_checked(&mut self, checked_at: u64) {
+        if let CloudUploadVerificationState::Pending { attempt_count, last_checked_at } =
+            &mut self.verification
+        {
+            *attempt_count += 1;
+            *last_checked_at = Some(checked_at);
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -117,7 +164,7 @@ pub struct PendingCloudUploadQueue {
 
 impl PendingCloudUploadQueue {
     pub fn has_unconfirmed(&self) -> bool {
-        self.items.iter().any(|item| item.confirmed_at.is_none())
+        self.items.iter().any(|item| !item.is_confirmed())
     }
 
     pub fn cleanup_listed(
@@ -131,7 +178,7 @@ impl PendingCloudUploadQueue {
                 return true;
             }
 
-            item.confirmed_at.is_none() || !listed_ids.contains(&item.record_id)
+            !item.is_confirmed() || !listed_ids.contains(&item.record_id)
         });
     }
 }
@@ -279,18 +326,17 @@ mod tests {
                     namespace_id: "ns-1".into(),
                     record_id: "wallet-a".into(),
                     enqueued_at: 10,
-                    last_checked_at: None,
-                    attempt_count: 0,
-                    confirmed_at: Some(12),
+                    verification: CloudUploadVerificationState::Confirmed(12),
                 },
                 PendingCloudUploadItem {
                     kind: CloudUploadKind::BackupBlob,
                     namespace_id: "ns-1".into(),
                     record_id: "wallet-b".into(),
                     enqueued_at: 11,
-                    last_checked_at: None,
-                    attempt_count: 0,
-                    confirmed_at: None,
+                    verification: CloudUploadVerificationState::Pending {
+                        attempt_count: 0,
+                        last_checked_at: None,
+                    },
                 },
             ],
         };
@@ -303,5 +349,51 @@ mod tests {
 
         assert_eq!(queue.items.len(), 1);
         assert_eq!(queue.items[0].record_id, "wallet-b");
+    }
+
+    #[test]
+    fn pending_upload_item_helpers_reflect_pending_state() {
+        let mut item = PendingCloudUploadItem {
+            kind: CloudUploadKind::BackupBlob,
+            namespace_id: "ns-1".into(),
+            record_id: "wallet-a".into(),
+            enqueued_at: 10,
+            verification: CloudUploadVerificationState::Pending {
+                attempt_count: 1,
+                last_checked_at: Some(12),
+            },
+        };
+
+        assert!(!item.is_confirmed());
+        assert_eq!(item.confirmed_at(), None);
+        assert_eq!(item.last_checked_at(), Some(12));
+        assert_eq!(item.attempt_count(), 1);
+
+        item.mark_checked(20);
+
+        assert_eq!(item.last_checked_at(), Some(20));
+        assert_eq!(item.attempt_count(), 2);
+    }
+
+    #[test]
+    fn pending_upload_item_helpers_reflect_confirmed_state() {
+        let mut item = PendingCloudUploadItem {
+            kind: CloudUploadKind::BackupBlob,
+            namespace_id: "ns-1".into(),
+            record_id: "wallet-a".into(),
+            enqueued_at: 10,
+            verification: CloudUploadVerificationState::Confirmed(12),
+        };
+
+        assert!(item.is_confirmed());
+        assert_eq!(item.confirmed_at(), Some(12));
+        assert_eq!(item.last_checked_at(), None);
+        assert_eq!(item.attempt_count(), 0);
+
+        item.mark_checked(20);
+
+        assert_eq!(item.confirmed_at(), Some(12));
+        assert_eq!(item.last_checked_at(), None);
+        assert_eq!(item.attempt_count(), 0);
     }
 }

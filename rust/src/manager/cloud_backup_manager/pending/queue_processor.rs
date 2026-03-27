@@ -72,13 +72,13 @@ impl PendingUploadVerifier<'_> {
         let cloud = CloudStorage::global();
         let checked_at: u64 = jiff::Timestamp::now().as_second().try_into().unwrap_or(0);
         for item in &mut queue.items {
-            if item.kind != CloudUploadKind::BackupBlob || item.confirmed_at.is_some() {
+            if item.kind != CloudUploadKind::BackupBlob || item.is_confirmed() {
                 continue;
             }
 
             let result = self.check_blob(cloud, &item.namespace_id, &item.record_id);
             Self::apply_blob_result(item, checked_at, &result);
-            self.log_blob_result(item, checked_at, &result);
+            self.log_blob_result(item, &result);
         }
     }
 
@@ -101,40 +101,38 @@ impl PendingUploadVerifier<'_> {
         result: &BlobCheckResult,
     ) {
         match result {
-            BlobCheckResult::Confirmed => {
-                item.confirmed_at = Some(checked_at);
-            }
+            BlobCheckResult::Confirmed => item.confirm(checked_at),
             BlobCheckResult::NotYetUploaded | BlobCheckResult::Failed(_) => {
-                item.last_checked_at = Some(checked_at);
-                item.attempt_count += 1;
+                item.mark_checked(checked_at)
             }
         }
     }
 
-    fn log_blob_result(
-        &self,
-        item: &PendingCloudUploadItem,
-        checked_at: u64,
-        result: &BlobCheckResult,
-    ) {
+    fn log_blob_result(&self, item: &PendingCloudUploadItem, result: &BlobCheckResult) {
         match result {
             BlobCheckResult::Confirmed => {
-                let elapsed_secs = checked_at.saturating_sub(item.enqueued_at);
+                let elapsed_secs =
+                    item.confirmed_at().unwrap_or_default().saturating_sub(item.enqueued_at);
                 info!(
                     "Pending upload verification: confirmed record_id={} elapsed={elapsed_secs}s attempts={}",
-                    item.record_id, item.attempt_count
+                    item.record_id,
+                    item.attempt_count()
                 );
             }
             BlobCheckResult::NotYetUploaded => {
+                let last_checked_at = item.last_checked_at().unwrap_or_default();
                 info!(
-                    "Pending upload verification: not yet uploaded record_id={} attempts={}",
-                    item.record_id, item.attempt_count
+                    "Pending upload verification: not yet uploaded record_id={} checked_at={last_checked_at} attempts={}",
+                    item.record_id,
+                    item.attempt_count()
                 );
             }
             BlobCheckResult::Failed(error) => {
+                let last_checked_at = item.last_checked_at().unwrap_or_default();
                 warn!(
-                    "Pending upload verification: check failed record_id={} error={error} attempts={}",
-                    item.record_id, item.attempt_count
+                    "Pending upload verification: check failed record_id={} checked_at={last_checked_at} error={error} attempts={}",
+                    item.record_id,
+                    item.attempt_count()
                 );
             }
         }
@@ -143,7 +141,7 @@ impl PendingUploadVerifier<'_> {
     fn finish_pass(&self, queue: &PendingCloudUploadQueue) -> bool {
         let has_unconfirmed = queue.has_unconfirmed();
         if has_unconfirmed {
-            let unconfirmed = queue.items.iter().filter(|item| item.confirmed_at.is_none()).count();
+            let unconfirmed = queue.items.iter().filter(|item| !item.is_confirmed()).count();
             self.send_pending_state(true);
             info!("Pending upload verification: still pending count={unconfirmed}");
         } else {
@@ -170,16 +168,17 @@ mod tests {
             namespace_id: "ns-1".into(),
             record_id: "wallet-a".into(),
             enqueued_at: 10,
-            last_checked_at: None,
-            attempt_count: 0,
-            confirmed_at: None,
+            verification: crate::database::cloud_backup::CloudUploadVerificationState::Pending {
+                attempt_count: 0,
+                last_checked_at: None,
+            },
         };
 
         PendingUploadVerifier::apply_blob_result(&mut blob, 20, &BlobCheckResult::Confirmed);
 
-        assert_eq!(blob.confirmed_at, Some(20));
-        assert_eq!(blob.last_checked_at, None);
-        assert_eq!(blob.attempt_count, 0);
+        assert_eq!(blob.confirmed_at(), Some(20));
+        assert_eq!(blob.last_checked_at(), None);
+        assert_eq!(blob.attempt_count(), 0);
     }
 
     #[test]
@@ -189,16 +188,17 @@ mod tests {
             namespace_id: "ns-1".into(),
             record_id: "wallet-a".into(),
             enqueued_at: 10,
-            last_checked_at: None,
-            attempt_count: 0,
-            confirmed_at: None,
+            verification: crate::database::cloud_backup::CloudUploadVerificationState::Pending {
+                attempt_count: 0,
+                last_checked_at: None,
+            },
         };
 
         PendingUploadVerifier::apply_blob_result(&mut blob, 20, &BlobCheckResult::NotYetUploaded);
 
-        assert_eq!(blob.confirmed_at, None);
-        assert_eq!(blob.last_checked_at, Some(20));
-        assert_eq!(blob.attempt_count, 1);
+        assert_eq!(blob.confirmed_at(), None);
+        assert_eq!(blob.last_checked_at(), Some(20));
+        assert_eq!(blob.attempt_count(), 1);
     }
 
     #[test]
@@ -208,9 +208,10 @@ mod tests {
             namespace_id: "ns-1".into(),
             record_id: "wallet-a".into(),
             enqueued_at: 10,
-            last_checked_at: None,
-            attempt_count: 0,
-            confirmed_at: None,
+            verification: crate::database::cloud_backup::CloudUploadVerificationState::Pending {
+                attempt_count: 0,
+                last_checked_at: None,
+            },
         };
 
         PendingUploadVerifier::apply_blob_result(
@@ -219,8 +220,8 @@ mod tests {
             &BlobCheckResult::Failed("boom".into()),
         );
 
-        assert_eq!(blob.confirmed_at, None);
-        assert_eq!(blob.last_checked_at, Some(20));
-        assert_eq!(blob.attempt_count, 1);
+        assert_eq!(blob.confirmed_at(), None);
+        assert_eq!(blob.last_checked_at(), Some(20));
+        assert_eq!(blob.attempt_count(), 1);
     }
 }

@@ -12,7 +12,9 @@ use tracing::{error, info};
 use self::queue_processor::PendingUploadVerifier;
 use super::{CLOUD_BACKUP_MANAGER, CloudBackupError, RustCloudBackupManager};
 use crate::database::Database;
-use crate::database::cloud_backup::{CloudUploadKind, PendingCloudUploadItem};
+use crate::database::cloud_backup::{
+    CloudUploadKind, CloudUploadVerificationState, PendingCloudUploadItem,
+};
 
 pub(crate) use detail::{build_detail_from_wallet_ids, cleanup_confirmed_pending_blobs};
 
@@ -78,9 +80,10 @@ impl RustCloudBackupManager {
                     namespace_id: namespace_id.to_string(),
                     record_id,
                     enqueued_at: now,
-                    last_checked_at: None,
-                    attempt_count: 0,
-                    confirmed_at: None,
+                    verification: CloudUploadVerificationState::Pending {
+                        attempt_count: 0,
+                        last_checked_at: None,
+                    },
                 });
             }
         }
