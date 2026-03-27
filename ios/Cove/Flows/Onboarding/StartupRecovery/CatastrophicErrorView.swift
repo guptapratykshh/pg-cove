@@ -18,6 +18,78 @@ struct CatastrophicErrorView: View {
     @State private var showWipeConfirmation = false
 
     var body: some View {
+        CatastrophicErrorContent(
+            cloudProbeState: cloudProbeState,
+            onRestoreFromCloud: onRestoreFromCloud,
+            onRetryCheck: retryProbe,
+            onContactSupport: contactSupport,
+            onWipeOnly: { showWipeConfirmation = true }
+        )
+        .task {
+            probeCloud()
+        }
+        .alert("Wipe All Local Data?", isPresented: $showWipeConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Wipe Data", role: .destructive) {
+                wipeAndRestart()
+            }
+        } message: {
+            Text(
+                "This will permanently delete all wallet data on this device. Make sure you have your recovery phrases backed up. This cannot be undone."
+            )
+        }
+    }
+
+    private func retryProbe() {
+        cloudProbeState = .checking
+        probeCloud()
+    }
+
+    private func probeCloud() {
+        Task.detached {
+            let cloud = CloudStorage(cloudStorage: CloudStorageAccessImpl())
+            do {
+                let exists = try cloud.hasAnyCloudBackup()
+                await MainActor.run {
+                    cloudProbeState = exists ? .available : .unavailable
+                }
+            } catch let error as CloudStorageError {
+                await MainActor.run {
+                    switch error {
+                    case .NotAvailable:
+                        cloudProbeState = .transientError
+                    default:
+                        cloudProbeState = .corrupt
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    cloudProbeState = .corrupt
+                }
+            }
+        }
+    }
+
+    private func contactSupport() {
+        if let url = URL(string: "mailto:feedback@covebitcoinwallet.com") {
+            UIApplication.shared.open(url)
+        }
+    }
+
+    private func wipeAndRestart() {
+        wipeLocalData()
+        onWipeOnly()
+    }
+}
+
+private struct CatastrophicErrorContent: View {
+    let cloudProbeState: CatastrophicErrorView.CloudProbeState
+    let onRestoreFromCloud: () -> Void
+    let onRetryCheck: () -> Void
+    let onContactSupport: () -> Void
+    let onWipeOnly: () -> Void
+
+    var body: some View {
         VStack(spacing: 0) {
             Spacer()
                 .frame(height: 16)
@@ -69,19 +141,6 @@ struct CatastrophicErrorView: View {
         .padding(.bottom, 26)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onboardingRecoveryBackground()
-        .task {
-            probeCloud()
-        }
-        .alert("Wipe All Local Data?", isPresented: $showWipeConfirmation) {
-            Button("Cancel", role: .cancel) {}
-            Button("Wipe Data", role: .destructive) {
-                wipeAndRestart()
-            }
-        } message: {
-            Text(
-                "This will permanently delete all wallet data on this device. Make sure you have your recovery phrases backed up. This cannot be undone."
-            )
-        }
     }
 
     @ViewBuilder
@@ -137,10 +196,7 @@ struct CatastrophicErrorView: View {
             if case .transientError = cloudProbeState {
                 restoreButton
 
-                Button {
-                    cloudProbeState = .checking
-                    probeCloud()
-                } label: {
+                Button(action: onRetryCheck) {
                     Text("Retry Check")
                 }
                 .buttonStyle(OnboardingSecondaryButtonStyle())
@@ -150,14 +206,12 @@ struct CatastrophicErrorView: View {
                 restoreButton
             }
 
-            Button(action: contactSupport) {
+            Button(action: onContactSupport) {
                 Label("Contact Support", systemImage: "envelope")
             }
             .buttonStyle(OnboardingSecondaryButtonStyle())
 
-            Button(role: .destructive) {
-                showWipeConfirmation = true
-            } label: {
+            Button(role: .destructive, action: onWipeOnly) {
                 Text("Wipe Local Data")
             }
             .buttonStyle(
@@ -201,40 +255,24 @@ struct CatastrophicErrorView: View {
                 .stroke(Color.coveLightGray.opacity(0.14), lineWidth: 1)
         )
     }
+}
 
-    private func probeCloud() {
-        Task.detached {
-            let cloud = CloudStorage(cloudStorage: CloudStorageAccessImpl())
-            do {
-                let exists = try cloud.hasAnyCloudBackup()
-                await MainActor.run {
-                    cloudProbeState = exists ? .available : .unavailable
-                }
-            } catch let error as CloudStorageError {
-                await MainActor.run {
-                    switch error {
-                    case .NotAvailable:
-                        cloudProbeState = .transientError
-                    default:
-                        cloudProbeState = .corrupt
-                    }
-                }
-            } catch {
-                await MainActor.run {
-                    cloudProbeState = .corrupt
-                }
-            }
-        }
-    }
+#Preview("Catastrophic Error - Available Backup") {
+    CatastrophicErrorContent(
+        cloudProbeState: .available,
+        onRestoreFromCloud: {},
+        onRetryCheck: {},
+        onContactSupport: {},
+        onWipeOnly: {}
+    )
+}
 
-    private func contactSupport() {
-        if let url = URL(string: "mailto:feedback@covebitcoinwallet.com") {
-            UIApplication.shared.open(url)
-        }
-    }
-
-    private func wipeAndRestart() {
-        wipeLocalData()
-        onWipeOnly()
-    }
+#Preview("Catastrophic Error - Checking") {
+    CatastrophicErrorContent(
+        cloudProbeState: .checking,
+        onRestoreFromCloud: {},
+        onRetryCheck: {},
+        onContactSupport: {},
+        onWipeOnly: {}
+    )
 }

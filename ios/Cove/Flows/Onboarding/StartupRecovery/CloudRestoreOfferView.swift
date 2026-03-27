@@ -183,3 +183,15 @@ struct CloudRestoreOfferView: View {
         )
     }
 }
+
+#Preview("Backup Found") {
+    CloudRestoreOfferView(onRestore: {}, onSkip: {})
+}
+
+#Preview("Backup Found Error") {
+    CloudRestoreOfferView(
+        onRestore: {},
+        onSkip: {},
+        errorMessage: "We couldn’t verify your passkey. Try again."
+    )
+}

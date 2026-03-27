@@ -53,6 +53,79 @@ struct DeviceRestoreView: View {
     }
 
     var body: some View {
+        DeviceRestoreContent(
+            phase: phase,
+            combinedProgress: combinedRestoreProgress,
+            onDone: finishRestore,
+            onRetry: startRestore
+        )
+        .task {
+            guard !hasStartedRestore else { return }
+            startRestore()
+        }
+        .onDisappear {
+            timeoutTask?.cancel()
+        }
+        .onChange(of: backupManager.status) { _, _ in
+            syncPhaseWithManager()
+        }
+        .onChange(of: backupManager.restoreReport) { _, _ in
+            syncPhaseWithManager()
+        }
+    }
+
+    private func startRestore() {
+        timeoutTask?.cancel()
+        phase = .restoring
+        hasStartedRestore = true
+        hasDeliveredCompletion = false
+        backupManager.dispatch(action: .restoreFromCloudBackup)
+
+        timeoutTask = Task {
+            try? await Task.sleep(for: restoreTimeout)
+            guard !Task.isCancelled else { return }
+
+            await MainActor.run {
+                guard case .restoring = phase else { return }
+                phase = .error("Restore timed out. Please try again.")
+            }
+        }
+    }
+
+    private func finishRestore() {
+        guard !hasDeliveredCompletion else { return }
+        hasDeliveredCompletion = true
+        onComplete()
+    }
+
+    private func syncPhaseWithManager() {
+        switch backupManager.status {
+        case let .error(message):
+            timeoutTask?.cancel()
+            if case .restoring = phase {
+                phase = .error(message)
+                onError(message)
+            }
+
+        case .enabled:
+            guard let report = backupManager.restoreReport else { return }
+            timeoutTask?.cancel()
+            if case .complete = phase { return }
+            phase = .complete(report)
+
+        default:
+            break
+        }
+    }
+}
+
+private struct DeviceRestoreContent: View {
+    let phase: DeviceRestoreView.RestorePhase
+    let combinedProgress: Double
+    let onDone: () -> Void
+    let onRetry: () -> Void
+
+    var body: some View {
         VStack(spacing: 0) {
             Spacer(minLength: 0)
 
@@ -67,7 +140,7 @@ struct DeviceRestoreView: View {
                 Spacer()
                     .frame(height: 18)
 
-                OnboardingThinProgressBar(progress: combinedRestoreProgress)
+                OnboardingThinProgressBar(progress: combinedProgress)
             }
 
             Spacer(minLength: 28)
@@ -79,19 +152,6 @@ struct DeviceRestoreView: View {
         .padding(.bottom, 28)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onboardingRecoveryBackground()
-        .task {
-            guard !hasStartedRestore else { return }
-            startRestore()
-        }
-        .onDisappear {
-            timeoutTask?.cancel()
-        }
-        .onChange(of: backupManager.status) { _, _ in
-            syncPhaseWithManager()
-        }
-        .onChange(of: backupManager.restoreReport) { _, _ in
-            syncPhaseWithManager()
-        }
     }
 
     @ViewBuilder
@@ -189,9 +249,7 @@ struct DeviceRestoreView: View {
                     warningCard(message: "\(report.walletsFailed) wallet(s) could not be restored")
                 }
 
-                Button {
-                    finishRestore()
-                } label: {
+                Button(action: onDone) {
                     Text("Done")
                 }
                 .buttonStyle(OnboardingPrimaryButtonStyle())
@@ -201,9 +259,7 @@ struct DeviceRestoreView: View {
             VStack(spacing: 18) {
                 warningCard(message: message)
 
-                Button {
-                    startRestore()
-                } label: {
+                Button(action: onRetry) {
                     Text("Retry")
                 }
                 .buttonStyle(OnboardingPrimaryButtonStyle())
@@ -235,48 +291,52 @@ struct DeviceRestoreView: View {
                 .stroke(Color.orange.opacity(0.3), lineWidth: 1)
         )
     }
+}
 
-    private func startRestore() {
-        timeoutTask?.cancel()
-        phase = .restoring
-        hasStartedRestore = true
-        hasDeliveredCompletion = false
-        backupManager.dispatch(action: .restoreFromCloudBackup)
+#Preview("Restore Progress") {
+    DeviceRestoreContent(
+        phase: .restoring,
+        combinedProgress: 0.25,
+        onDone: {},
+        onRetry: {}
+    )
+}
 
-        timeoutTask = Task {
-            try? await Task.sleep(for: restoreTimeout)
-            guard !Task.isCancelled else { return }
+#Preview("Restore Success") {
+    DeviceRestoreContent(
+        phase: .complete(
+            CloudBackupRestoreReport(
+                walletsRestored: 4,
+                walletsFailed: 0,
+                failedWalletErrors: []
+            )
+        ),
+        combinedProgress: 1,
+        onDone: {},
+        onRetry: {}
+    )
+}
 
-            await MainActor.run {
-                guard case .restoring = phase else { return }
-                phase = .error("Restore timed out. Please try again.")
-            }
-        }
-    }
+#Preview("Restore Partial Success") {
+    DeviceRestoreContent(
+        phase: .complete(
+            CloudBackupRestoreReport(
+                walletsRestored: 3,
+                walletsFailed: 1,
+                failedWalletErrors: ["Wallet 4 failed to restore"]
+            )
+        ),
+        combinedProgress: 1,
+        onDone: {},
+        onRetry: {}
+    )
+}
 
-    private func finishRestore() {
-        guard !hasDeliveredCompletion else { return }
-        hasDeliveredCompletion = true
-        onComplete()
-    }
-
-    private func syncPhaseWithManager() {
-        switch backupManager.status {
-        case let .error(message):
-            timeoutTask?.cancel()
-            if case .restoring = phase {
-                phase = .error(message)
-                onError(message)
-            }
-
-        case .enabled:
-            guard let report = backupManager.restoreReport else { return }
-            timeoutTask?.cancel()
-            if case .complete = phase { return }
-            phase = .complete(report)
-
-        default:
-            break
-        }
-    }
+#Preview("Restore Error") {
+    DeviceRestoreContent(
+        phase: .error("Restore timed out. Please try again."),
+        combinedProgress: 0,
+        onDone: {},
+        onRetry: {}
+    )
 }

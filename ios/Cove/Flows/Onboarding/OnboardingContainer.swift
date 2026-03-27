@@ -66,7 +66,9 @@ struct OnboardingContainer: View {
             }
 
         case .cloudCheck:
-            CloudCheckView(manager: manager)
+            CloudCheckView { hasBackup in
+                manager.dispatch(.cloudCheckComplete(hasBackup: hasBackup))
+            }
 
         case .restoreOffer:
             CloudRestoreOfferView(
@@ -95,8 +97,40 @@ private struct CloudCheckView: View {
         retryDelays.count + 1
     }
 
-    let manager: OnboardingManager
+    let onCloudCheckComplete: (Bool) -> Void
 
+    var body: some View {
+        CloudCheckContent()
+            .task {
+                let hasBackup = await Task.detached(priority: .userInitiated) {
+                    await Self.checkForCloudBackup { _ in }
+                }.value
+                onCloudCheckComplete(hasBackup)
+            }
+    }
+
+    private static func checkForCloudBackup(onAttempt: @Sendable (Int) async -> Void) async -> Bool {
+        guard FileManager.default.ubiquityIdentityToken != nil else {
+            Log.info("[ONBOARDING] iCloud not available")
+            return false
+        }
+
+        let cloud = CloudStorage(cloudStorage: CloudStorageAccessImpl())
+        for attempt in 1 ... maxAttempts {
+            await onAttempt(attempt)
+            Log.info("[ONBOARDING] calling hasAnyCloudBackup attempt=\(attempt)/\(maxAttempts)")
+            let hasBackup = (try? cloud.hasAnyCloudBackup()) == true
+            Log.info("[ONBOARDING] hasAnyCloudBackup returned: \(hasBackup) attempt=\(attempt)/\(maxAttempts)")
+            if hasBackup { return true }
+            guard attempt < maxAttempts else { break }
+            try? await Task.sleep(for: retryDelays[attempt - 1])
+        }
+
+        return false
+    }
+}
+
+private struct CloudCheckContent: View {
     var body: some View {
         VStack(spacing: 0) {
             Spacer(minLength: 0)
@@ -130,31 +164,9 @@ private struct CloudCheckView: View {
         .padding(.bottom, 28)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onboardingRecoveryBackground()
-        .task {
-            let hasBackup = await Task.detached(priority: .userInitiated) {
-                await Self.checkForCloudBackup { _ in }
-            }.value
-            manager.dispatch(.cloudCheckComplete(hasBackup: hasBackup))
-        }
     }
+}
 
-    private static func checkForCloudBackup(onAttempt: @Sendable (Int) async -> Void) async -> Bool {
-        guard FileManager.default.ubiquityIdentityToken != nil else {
-            Log.info("[ONBOARDING] iCloud not available")
-            return false
-        }
-
-        let cloud = CloudStorage(cloudStorage: CloudStorageAccessImpl())
-        for attempt in 1 ... maxAttempts {
-            await onAttempt(attempt)
-            Log.info("[ONBOARDING] calling hasAnyCloudBackup attempt=\(attempt)/\(maxAttempts)")
-            let hasBackup = (try? cloud.hasAnyCloudBackup()) == true
-            Log.info("[ONBOARDING] hasAnyCloudBackup returned: \(hasBackup) attempt=\(attempt)/\(maxAttempts)")
-            if hasBackup { return true }
-            guard attempt < maxAttempts else { break }
-            try? await Task.sleep(for: retryDelays[attempt - 1])
-        }
-
-        return false
-    }
+#Preview("Cloud Check") {
+    CloudCheckContent()
 }
