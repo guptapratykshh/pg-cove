@@ -1,5 +1,4 @@
 import CoveCore
-import CryptoKit
 import Foundation
 
 final class ICloudDriveHelper: @unchecked Sendable {
@@ -135,38 +134,26 @@ final class ICloudDriveHelper: @unchecked Sendable {
             .appendingPathComponent(namespace, isDirectory: true)
     }
 
-    /// Master key file URL within a namespace
-    ///
-    /// Filename: masterkey-{SHA256(MASTER_KEY_RECORD_ID)}.json
     func masterKeyFileURL(namespace: String) throws -> URL {
-        let recordId = csppMasterKeyRecordId()
-        let hash = SHA256.hash(data: Data(recordId.utf8))
-        let hexHash = hash.compactMap { String(format: "%02x", $0) }.joined()
-        let filename = "masterkey-\(hexHash).json"
+        let filename = csppMasterKeyFilename()
         return try namespaceDirectoryURL(namespace: namespace)
             .appendingPathComponent(filename)
     }
 
     func masterKeyFileReadURL(namespace: String) throws -> URL {
-        let recordId = csppMasterKeyRecordId()
-        let hash = SHA256.hash(data: Data(recordId.utf8))
-        let hexHash = hash.compactMap { String(format: "%02x", $0) }.joined()
-        let filename = "masterkey-\(hexHash).json"
+        let filename = csppMasterKeyFilename()
         return try namespaceDirectoryReadURL(namespace: namespace)
             .appendingPathComponent(filename)
     }
 
-    /// Wallet backup file URL within a namespace
-    ///
-    /// Filename: wallet-{recordId}.json — recordId is already SHA256(wallet_id)
     func walletFileURL(namespace: String, recordId: String) throws -> URL {
-        let filename = "wallet-\(recordId).json"
+        let filename = csppWalletFilenameFromRecordId(recordId: recordId)
         return try namespaceDirectoryURL(namespace: namespace)
             .appendingPathComponent(filename)
     }
 
     func walletFileReadURL(namespace: String, recordId: String) throws -> URL {
-        let filename = "wallet-\(recordId).json"
+        let filename = csppWalletFilenameFromRecordId(recordId: recordId)
         return try namespaceDirectoryReadURL(namespace: namespace)
             .appendingPathComponent(filename)
     }
@@ -175,13 +162,6 @@ final class ICloudDriveHelper: @unchecked Sendable {
         if recordId == csppMasterKeyRecordId() { return try masterKeyFileURL(namespace: namespace) }
 
         return try walletFileURL(namespace: namespace, recordId: recordId)
-    }
-
-    /// Legacy flat file URL (for migration/cleanup)
-    func legacyFileURL(for recordId: String) throws -> URL {
-        let hash = SHA256.hash(data: Data(recordId.utf8))
-        let filename = hash.compactMap { String(format: "%02x", $0) }.joined() + ".json"
-        return try dataDirectoryURL().appendingPathComponent(filename)
     }
 
     // MARK: - File coordination

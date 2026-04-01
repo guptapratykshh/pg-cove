@@ -34089,6 +34089,12 @@ public func updatePricesIfNeeded()async   {
             
         )
 }
+public func csppMasterKeyFilename() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_cove_fn_func_cspp_master_key_filename($0
+    )
+})
+}
 public func csppMasterKeyRecordId() -> String  {
     return try!  FfiConverterString.lift(try! rustCall() {
     uniffi_cove_fn_func_cspp_master_key_record_id($0
@@ -34098,6 +34104,19 @@ public func csppMasterKeyRecordId() -> String  {
 public func csppNamespacesSubdirectory() -> String  {
     return try!  FfiConverterString.lift(try! rustCall() {
     uniffi_cove_fn_func_cspp_namespaces_subdirectory($0
+    )
+})
+}
+public func csppWalletFilePrefix() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_cove_fn_func_cspp_wallet_file_prefix($0
+    )
+})
+}
+public func csppWalletFilenameFromRecordId(recordId: String) -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+    uniffi_cove_fn_func_cspp_wallet_filename_from_record_id(
+        FfiConverterString.lower(recordId),$0
     )
 })
 }
@@ -34378,10 +34397,19 @@ private let initializationResult: InitializationResult = {
     if (uniffi_cove_checksum_func_updatepricesifneeded() != 5753) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_cove_checksum_func_cspp_master_key_filename() != 60745) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_cove_checksum_func_cspp_master_key_record_id() != 23703) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_cove_checksum_func_cspp_namespaces_subdirectory() != 8147) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_cove_checksum_func_cspp_wallet_file_prefix() != 10192) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_cove_checksum_func_cspp_wallet_filename_from_record_id() != 30909) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_cove_checksum_func_reset_local_data_for_catastrophic_recovery() != 25639) {

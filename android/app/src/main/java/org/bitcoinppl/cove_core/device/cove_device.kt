@@ -2818,6 +2818,12 @@ sealed class PasskeyException: kotlin.Exception() {
             get() = "v1=${ v1 }"
     }
     
+    class PrfUnsupportedProvider(
+        ) : PasskeyException() {
+        override val message
+            get() = ""
+    }
+    
     class UserCancelled(
         ) : PasskeyException() {
         override val message
@@ -2877,14 +2883,15 @@ public object FfiConverterTypePasskeyError : FfiConverterRustBuffer<PasskeyExcep
             1 -> PasskeyException.NotSupported(
                 FfiConverterString.read(buf),
                 )
-            2 -> PasskeyException.UserCancelled()
-            3 -> PasskeyException.CreationFailed(
+            2 -> PasskeyException.PrfUnsupportedProvider()
+            3 -> PasskeyException.UserCancelled()
+            4 -> PasskeyException.CreationFailed(
                 FfiConverterString.read(buf),
                 )
-            4 -> PasskeyException.AuthenticationFailed(
+            5 -> PasskeyException.AuthenticationFailed(
                 FfiConverterString.read(buf),
                 )
-            5 -> PasskeyException.NoCredentialFound()
+            6 -> PasskeyException.NoCredentialFound()
             else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
         }
     }
@@ -2895,6 +2902,10 @@ public object FfiConverterTypePasskeyError : FfiConverterRustBuffer<PasskeyExcep
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4UL
                 + FfiConverterString.allocationSize(value.v1)
+            )
+            is PasskeyException.PrfUnsupportedProvider -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
             )
             is PasskeyException.UserCancelled -> (
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
@@ -2924,22 +2935,26 @@ public object FfiConverterTypePasskeyError : FfiConverterRustBuffer<PasskeyExcep
                 FfiConverterString.write(value.v1, buf)
                 Unit
             }
-            is PasskeyException.UserCancelled -> {
+            is PasskeyException.PrfUnsupportedProvider -> {
                 buf.putInt(2)
                 Unit
             }
-            is PasskeyException.CreationFailed -> {
+            is PasskeyException.UserCancelled -> {
                 buf.putInt(3)
-                FfiConverterString.write(value.v1, buf)
                 Unit
             }
-            is PasskeyException.AuthenticationFailed -> {
+            is PasskeyException.CreationFailed -> {
                 buf.putInt(4)
                 FfiConverterString.write(value.v1, buf)
                 Unit
             }
-            is PasskeyException.NoCredentialFound -> {
+            is PasskeyException.AuthenticationFailed -> {
                 buf.putInt(5)
+                FfiConverterString.write(value.v1, buf)
+                Unit
+            }
+            is PasskeyException.NoCredentialFound -> {
+                buf.putInt(6)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }

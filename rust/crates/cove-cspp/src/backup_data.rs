@@ -30,7 +30,12 @@ pub fn master_key_filename() -> String {
 
 /// Cloud filename for a wallet backup: wallet-{SHA256(wallet_id)}.json
 pub fn wallet_filename(wallet_id: &str) -> String {
-    format!("{WALLET_FILE_PREFIX}{}.json", wallet_record_id(wallet_id))
+    wallet_filename_from_record_id(&wallet_record_id(wallet_id))
+}
+
+/// Cloud filename for a wallet backup from a precomputed record id
+pub fn wallet_filename_from_record_id(record_id: &str) -> String {
+    format!("{WALLET_FILE_PREFIX}{record_id}.json")
 }
 
 /// Extract the wallet record ID (SHA256 hex) from a wallet filename
@@ -208,6 +213,12 @@ mod tests {
         let filename = wallet_filename("my-wallet-123");
         assert!(filename.starts_with("wallet-"));
         assert!(filename.ends_with(".json"));
+    }
+
+    #[test]
+    fn wallet_filename_from_record_id_format() {
+        let filename = wallet_filename_from_record_id("abc123");
+        assert_eq!(filename, "wallet-abc123.json");
     }
 
     #[test]

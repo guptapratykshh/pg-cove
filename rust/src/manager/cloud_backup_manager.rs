@@ -936,6 +936,21 @@ pub fn cspp_master_key_record_id() -> String {
 }
 
 #[uniffi::export]
+pub fn cspp_master_key_filename() -> String {
+    cove_cspp::backup_data::master_key_filename()
+}
+
+#[uniffi::export]
+pub fn cspp_wallet_filename_from_record_id(record_id: String) -> String {
+    cove_cspp::backup_data::wallet_filename_from_record_id(&record_id)
+}
+
+#[uniffi::export]
+pub fn cspp_wallet_file_prefix() -> String {
+    cove_cspp::backup_data::WALLET_FILE_PREFIX.to_string()
+}
+
+#[uniffi::export]
 pub fn cspp_namespaces_subdirectory() -> String {
     cove_cspp::backup_data::NAMESPACES_SUBDIRECTORY.to_string()
 }

@@ -1055,9 +1055,15 @@ internal object IntegrityCheckingUniffiLib {
     ): Short
     external fun uniffi_cove_checksum_func_updatepricesifneeded(
     ): Short
+    external fun uniffi_cove_checksum_func_cspp_master_key_filename(
+    ): Short
     external fun uniffi_cove_checksum_func_cspp_master_key_record_id(
     ): Short
     external fun uniffi_cove_checksum_func_cspp_namespaces_subdirectory(
+    ): Short
+    external fun uniffi_cove_checksum_func_cspp_wallet_file_prefix(
+    ): Short
+    external fun uniffi_cove_checksum_func_cspp_wallet_filename_from_record_id(
     ): Short
     external fun uniffi_cove_checksum_func_reset_local_data_for_catastrophic_recovery(
     ): Short
@@ -3251,9 +3257,15 @@ internal object UniffiLib {
     ): Byte
     external fun uniffi_cove_fn_func_updatepricesifneeded(
     ): Long
+    external fun uniffi_cove_fn_func_cspp_master_key_filename(uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
     external fun uniffi_cove_fn_func_cspp_master_key_record_id(uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_cove_fn_func_cspp_namespaces_subdirectory(uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_cove_fn_func_cspp_wallet_file_prefix(uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_cove_fn_func_cspp_wallet_filename_from_record_id(`recordId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_cove_fn_func_reset_local_data_for_catastrophic_recovery(uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
@@ -3473,10 +3485,19 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_cove_checksum_func_updatepricesifneeded() != 5753.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_cove_checksum_func_cspp_master_key_filename() != 60745.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_cove_checksum_func_cspp_master_key_record_id() != 23703.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_cove_checksum_func_cspp_namespaces_subdirectory() != 8147.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_cove_checksum_func_cspp_wallet_file_prefix() != 10192.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_cove_checksum_func_cspp_wallet_filename_from_record_id() != 30909.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_cove_checksum_func_reset_local_data_for_catastrophic_recovery() != 25639.toShort()) {
@@ -33667,6 +33688,9 @@ sealed class CloudBackupStatus {
     object PasskeyMissing : CloudBackupStatus()
     
     
+    object UnsupportedPasskeyProvider : CloudBackupStatus()
+    
+    
     data class Error(
         val v1: kotlin.String) : CloudBackupStatus()
         
@@ -33697,7 +33721,8 @@ public object FfiConverterTypeCloudBackupStatus : FfiConverterRustBuffer<CloudBa
             3 -> CloudBackupStatus.Restoring
             4 -> CloudBackupStatus.Enabled
             5 -> CloudBackupStatus.PasskeyMissing
-            6 -> CloudBackupStatus.Error(
+            6 -> CloudBackupStatus.UnsupportedPasskeyProvider
+            7 -> CloudBackupStatus.Error(
                 FfiConverterString.read(buf),
                 )
             else -> throw RuntimeException("invalid enum value, something is very wrong!!")
@@ -33735,6 +33760,12 @@ public object FfiConverterTypeCloudBackupStatus : FfiConverterRustBuffer<CloudBa
                 4UL
             )
         }
+        is CloudBackupStatus.UnsupportedPasskeyProvider -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
         is CloudBackupStatus.Error -> {
             // Add the size for the Int that specifies the variant plus the size needed for all fields
             (
@@ -33766,8 +33797,12 @@ public object FfiConverterTypeCloudBackupStatus : FfiConverterRustBuffer<CloudBa
                 buf.putInt(5)
                 Unit
             }
-            is CloudBackupStatus.Error -> {
+            is CloudBackupStatus.UnsupportedPasskeyProvider -> {
                 buf.putInt(6)
+                Unit
+            }
+            is CloudBackupStatus.Error -> {
+                buf.putInt(7)
                 FfiConverterString.write(value.v1, buf)
                 Unit
             }
@@ -52903,6 +52938,16 @@ object UrExceptionExternalErrorHandler : UniffiRustCallStatusErrorHandler<UrExce
         UniffiNullRustCallStatusErrorHandler,
     )
     }
+ fun `csppMasterKeyFilename`(): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_cove_fn_func_cspp_master_key_filename(
+    
+        _status)
+}
+    )
+    }
+    
  fun `csppMasterKeyRecordId`(): kotlin.String {
             return FfiConverterString.lift(
     uniffiRustCall() { _status ->
@@ -52919,6 +52964,26 @@ object UrExceptionExternalErrorHandler : UniffiRustCallStatusErrorHandler<UrExce
     UniffiLib.uniffi_cove_fn_func_cspp_namespaces_subdirectory(
     
         _status)
+}
+    )
+    }
+    
+ fun `csppWalletFilePrefix`(): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_cove_fn_func_cspp_wallet_file_prefix(
+    
+        _status)
+}
+    )
+    }
+    
+ fun `csppWalletFilenameFromRecordId`(`recordId`: kotlin.String): kotlin.String {
+            return FfiConverterString.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_cove_fn_func_cspp_wallet_filename_from_record_id(
+    
+        FfiConverterString.lower(`recordId`),_status)
 }
     )
     }
