@@ -53,10 +53,10 @@ struct CoveApp: App {
         _ = Device(device: DeviceAccesor())
         _ = PasskeyAccess(provider: PasskeyProviderImpl())
         _ = CloudStorage(cloudStorage: CloudStorageAccessImpl())
-        Self.excludeDataDirFromBackup()
+        Self.excludeDataDirFromBackup(logFailure: false)
     }
 
-    private static func excludeDataDirFromBackup() {
+    private static func excludeDataDirFromBackup(logFailure: Bool) {
         let path = rootDataDirPath()
         var url = URL(fileURLWithPath: path, isDirectory: true)
         do {
@@ -64,7 +64,9 @@ struct CoveApp: App {
             values.isExcludedFromBackup = true
             try url.setResourceValues(values)
         } catch {
-            Log.error("Failed to set isExcludedFromBackup on data dir: \(error)")
+            if logFailure {
+                Log.error("Failed to set isExcludedFromBackup on data dir: \(error)")
+            }
         }
     }
 
@@ -220,6 +222,7 @@ extension CoveApp {
 
         // unconditional initialization — everything ready before any user interaction
         initializeApp()
+        Self.excludeDataDirFromBackup(logFailure: true)
         let appManager = AppManager.shared
         appManager.asyncRuntimeReady = true
         CloudBackupManager.shared.rust.syncPersistedState()

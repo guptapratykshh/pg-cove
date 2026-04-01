@@ -586,18 +586,17 @@ fn restore_downloaded_wallet(
             let mnemonic = bip39::Mnemonic::from_str(words)
                 .map_err_prefix("invalid mnemonic", CloudBackupError::Internal)?;
 
-            crate::backup::import::restore_mnemonic_wallet(metadata, mnemonic).map_err(
+            crate::backup::import::restore_cloud_mnemonic_wallet(metadata, mnemonic).map_err(
                 |(error, _)| {
                     CloudBackupError::Internal(format!("restore mnemonic wallet: {error}"))
                 },
             )?;
         }
         _ => {
-            crate::backup::import::restore_descriptor_wallet(metadata, &backup_model).map_err(
-                |(error, _)| {
+            crate::backup::import::restore_cloud_descriptor_wallet(metadata, &backup_model)
+                .map_err(|(error, _)| {
                     CloudBackupError::Internal(format!("restore descriptor wallet: {error}"))
-                },
-            )?;
+                })?;
         }
     }
 

@@ -62,7 +62,7 @@ final class CloudBackupManager: AnyReconciler, CloudBackupManagerReconciler, @un
 
     var shouldPromptVerification: Bool {
         if isBackgroundVerifying { return false }
-        state.shouldPromptVerification
+        return state.shouldPromptVerification
     }
 
     var isUnverified: Bool {
