@@ -193,7 +193,7 @@ impl RustCloudBackupManager {
 
         match self.finalize_pending_verification(completion.clone()) {
             Ok(report) => self.apply_verified_report(report),
-            Err(failure) => self.apply_failed_verification(failure),
+            Err(failure) => self.apply_failed_verification(*failure),
         }
 
         self.clear_pending_verification_completion();
@@ -320,14 +320,18 @@ impl RustCloudBackupManager {
     fn finalize_pending_verification(
         &self,
         completion: PendingVerificationCompletion,
-    ) -> Result<DeepVerificationReport, DeepVerificationFailure> {
+    ) -> Result<DeepVerificationReport, Box<DeepVerificationFailure>> {
         let cspp = cove_cspp::Cspp::new(Keychain::global().clone());
         let master_key = cspp
             .load_master_key_from_store()
             .map_err_prefix("load local master key", CloudBackupError::Internal)
-            .map_err(|error| self.pending_verification_failure(&completion, error.to_string()))?
+            .map_err(|error| {
+                Box::new(self.pending_verification_failure(&completion, error.to_string()))
+            })?
             .ok_or_else(|| {
-                self.pending_verification_failure(&completion, "no local master key available")
+                Box::new(
+                    self.pending_verification_failure(&completion, "no local master key available"),
+                )
             })?;
 
         let critical_key = Zeroizing::new(master_key.critical_data_key());
@@ -350,7 +354,7 @@ impl RustCloudBackupManager {
         completion: &PendingVerificationCompletion,
         record_id: &str,
         critical_key: &[u8; 32],
-    ) -> Result<PendingWalletVerificationOutcome, DeepVerificationFailure> {
+    ) -> Result<PendingWalletVerificationOutcome, Box<DeepVerificationFailure>> {
         let cloud = CloudStorage::global();
         let download = cloud
             .download_wallet_backup(completion.namespace_id().to_string(), record_id.to_string());
@@ -364,10 +368,10 @@ impl RustCloudBackupManager {
 
         let encrypted: EncryptedWalletBackup =
             serde_json::from_slice(&wallet_json).map_err(|error| {
-                self.pending_verification_failure(
+                Box::new(self.pending_verification_failure(
                     completion,
                     format!("deserialize wallet {record_id}: {error}"),
-                )
+                ))
             })?;
 
         if encrypted.version != 1 {
