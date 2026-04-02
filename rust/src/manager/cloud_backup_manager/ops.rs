@@ -819,9 +819,7 @@ where
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
-    use std::sync::Mutex as StdMutex;
     use std::sync::{Arc, OnceLock};
-    use std::time::Duration;
 
     use bip39::Mnemonic;
     use cove_cspp::CsppStore;
@@ -1147,9 +1145,8 @@ mod tests {
         GLOBALS.get_or_init(TestGlobals::init)
     }
 
-    fn test_lock() -> &'static StdMutex<()> {
-        static LOCK: OnceLock<StdMutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| StdMutex::new(()))
+    fn test_lock() -> &'static parking_lot::Mutex<()> {
+        super::super::cloud_backup_test_lock()
     }
 
     fn clear_local_wallets() {
@@ -1258,7 +1255,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn backup_wallets_uploads_when_cloud_backup_is_enabled() {
-        let _guard = test_lock().lock().unwrap();
+        let _guard = test_lock().lock();
         cove_tokio::init();
         let globals = test_globals();
         let manager = RustCloudBackupManager::init();
@@ -1283,7 +1280,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn restore_downloaded_wallet_does_not_reupload_wallet_or_mutate_backup_counts() {
-        let _guard = test_lock().lock().unwrap();
+        let _guard = test_lock().lock();
         cove_tokio::init();
         let globals = test_globals();
         let manager = RustCloudBackupManager::init();
@@ -1303,7 +1300,6 @@ mod tests {
         };
 
         restore_downloaded_wallet_for_restore(&wallet, &mut Vec::new()).unwrap();
-        std::thread::sleep(Duration::from_millis(100));
 
         assert_eq!(globals.cloud.uploaded_wallet_backup_count(), 0);
         assert_eq!(Database::global().cloud_backup_state.get().unwrap().wallet_count, Some(5));
@@ -1351,7 +1347,7 @@ mod tests {
 
     #[test]
     fn local_master_key_fallback_persists_namespace_id() {
-        let _guard = test_lock().lock().unwrap();
+        let _guard = test_lock().lock();
         let globals = test_globals();
         globals.reset();
 
@@ -1377,7 +1373,7 @@ mod tests {
 
     #[test]
     fn failed_create_new_enable_does_not_persist_passkey_metadata() {
-        let _guard = test_lock().lock().unwrap();
+        let _guard = test_lock().lock();
         let globals = test_globals();
         globals.reset();
         globals.cloud.fail_master_key_upload("boom");
@@ -1400,7 +1396,7 @@ mod tests {
 
     #[test]
     fn reupload_all_wallets_does_not_create_master_key_for_existing_namespace() {
-        let _guard = test_lock().lock().unwrap();
+        let _guard = test_lock().lock();
         let globals = test_globals();
         globals.reset();
 
@@ -1421,7 +1417,7 @@ mod tests {
 
     #[test]
     fn backup_wallets_does_not_create_master_key_or_upload_when_missing() {
-        let _guard = test_lock().lock().unwrap();
+        let _guard = test_lock().lock();
         let globals = test_globals();
         globals.reset();
 
@@ -1447,7 +1443,7 @@ mod tests {
 
     #[test]
     fn deep_verify_fails_when_auto_sync_upload_fails() {
-        let _guard = test_lock().lock().unwrap();
+        let _guard = test_lock().lock();
         let globals = test_globals();
         let manager = RustCloudBackupManager::init();
         let metadata = prepare_deep_verify_with_unsynced_wallet(&manager, globals);
@@ -1473,7 +1469,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn deep_verify_awaits_upload_confirmation_when_relist_still_misses_uploaded_wallet() {
-        let _guard = test_lock().lock().unwrap();
+        let _guard = test_lock().lock();
         cove_tokio::init();
         let globals = test_globals();
         let manager = RustCloudBackupManager::init();
@@ -1498,7 +1494,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn pending_upload_verification_finalizes_awaiting_deep_verify() {
-        let _guard = test_lock().lock().unwrap();
+        let _guard = test_lock().lock();
         cove_tokio::init();
         let globals = test_globals();
         let manager = RustCloudBackupManager::init();
@@ -1536,7 +1532,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn deep_verify_succeeds_after_auto_sync_relist_confirms_wallet() {
-        let _guard = test_lock().lock().unwrap();
+        let _guard = test_lock().lock();
         cove_tokio::init();
         let globals = test_globals();
         let manager = RustCloudBackupManager::init();
@@ -1563,7 +1559,7 @@ mod tests {
 
     #[test]
     fn discard_pending_enable_clears_pending_session_and_local_master_key() {
-        let _guard = test_lock().lock().unwrap();
+        let _guard = test_lock().lock();
         let globals = test_globals();
         let manager = RustCloudBackupManager::init();
 
@@ -1585,7 +1581,7 @@ mod tests {
 
     #[test]
     fn cancelled_enable_create_new_rolls_back_new_local_master_key() {
-        let _guard = test_lock().lock().unwrap();
+        let _guard = test_lock().lock();
         let globals = test_globals();
         let manager = RustCloudBackupManager::init();
 
@@ -1601,7 +1597,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn cancelled_passkey_restore_does_not_fall_back_to_local_master_key() {
-        let _guard = test_lock().lock().unwrap();
+        let _guard = test_lock().lock();
         cove_tokio::init();
         let globals = test_globals();
         let manager = RustCloudBackupManager::init();

@@ -1125,9 +1125,19 @@ fn wallet_ids_from_wallet_data_dir(wallet_data_dir: &Path) -> Vec<WalletId> {
 }
 
 #[cfg(test)]
+pub(crate) fn cloud_backup_test_lock() -> &'static parking_lot::Mutex<()> {
+    static LOCK: std::sync::OnceLock<parking_lot::Mutex<()>> = std::sync::OnceLock::new();
+    LOCK.get_or_init(parking_lot::Mutex::default)
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use tempfile::TempDir;
+
+    fn test_lock() -> &'static parking_lot::Mutex<()> {
+        super::cloud_backup_test_lock()
+    }
 
     #[test]
     fn convert_cloud_secret_mnemonic() {
@@ -1159,6 +1169,7 @@ mod tests {
 
     #[test]
     fn restore_progress_updates_state() {
+        let _guard = test_lock().lock();
         let manager = RustCloudBackupManager::init();
         let progress = CloudBackupRestoreProgress {
             stage: CloudBackupRestoreStage::Downloading,
@@ -1224,6 +1235,7 @@ mod tests {
 
     #[test]
     fn restore_complete_clears_restore_progress() {
+        let _guard = test_lock().lock();
         let manager = RustCloudBackupManager::init();
         manager.set_restore_progress(Some(CloudBackupRestoreProgress {
             stage: CloudBackupRestoreStage::Restoring,
@@ -1242,6 +1254,7 @@ mod tests {
 
     #[test]
     fn terminal_status_clears_restore_progress_and_keeps_report() {
+        let _guard = test_lock().lock();
         let manager = RustCloudBackupManager::init();
         let report = CloudBackupRestoreReport {
             wallets_restored: 0,
@@ -1275,6 +1288,7 @@ mod tests {
 
     #[test]
     fn stale_restore_operation_cannot_update_restore_progress() {
+        let _guard = test_lock().lock();
         let manager = RustCloudBackupManager::init();
         let stale_operation_id = manager.next_restore_operation_id();
         let current_operation_id = manager.next_restore_operation_id();
@@ -1303,6 +1317,7 @@ mod tests {
 
     #[test]
     fn stale_restore_operation_cannot_update_status() {
+        let _guard = test_lock().lock();
         let manager = RustCloudBackupManager::init();
         let stale_operation_id = manager.next_restore_operation_id();
         let current_operation_id = manager.next_restore_operation_id();
@@ -1323,6 +1338,7 @@ mod tests {
 
     #[test]
     fn stale_restore_operation_cannot_update_restore_report() {
+        let _guard = test_lock().lock();
         let manager = RustCloudBackupManager::init();
         let stale_operation_id = manager.next_restore_operation_id();
         let current_operation_id = manager.next_restore_operation_id();
@@ -1348,6 +1364,7 @@ mod tests {
 
     #[test]
     fn stale_restore_operation_cannot_persist_cloud_backup_state() {
+        let _guard = test_lock().lock();
         let manager = RustCloudBackupManager::init();
         let db = Database::global();
         db.cloud_backup_state.set(&PersistedCloudBackupState::default()).unwrap();
@@ -1386,6 +1403,7 @@ mod tests {
 
     #[test]
     fn invalidated_restore_operation_becomes_cancelled() {
+        let _guard = test_lock().lock();
         let manager = RustCloudBackupManager::init();
         let operation_id = manager.next_restore_operation_id();
 
@@ -1397,6 +1415,7 @@ mod tests {
 
     #[test]
     fn stale_restore_operation_does_not_run_locked_update() {
+        let _guard = test_lock().lock();
         let manager = RustCloudBackupManager::init();
         let stale_operation_id = manager.next_restore_operation_id();
         manager.next_restore_operation_id();

@@ -231,7 +231,6 @@ impl RustCloudBackupManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::{Mutex as StdMutex, OnceLock};
 
     #[test]
     fn pending_upload_retry_backoff_resets_to_short_delay() {
@@ -255,14 +254,13 @@ mod tests {
         }
     }
 
-    fn test_lock() -> &'static StdMutex<()> {
-        static LOCK: OnceLock<StdMutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| StdMutex::new(()))
+    fn test_lock() -> &'static parking_lot::Mutex<()> {
+        super::super::cloud_backup_test_lock()
     }
 
     #[test]
     fn enqueue_pending_uploads_reactivates_confirmed_item() {
-        let _guard = test_lock().lock().unwrap();
+        let _guard = test_lock().lock();
         let manager = RustCloudBackupManager::init();
         let table = &Database::global().cloud_upload_queue;
 
