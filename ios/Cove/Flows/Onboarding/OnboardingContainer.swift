@@ -131,6 +131,7 @@ struct OnboardingContainer: View {
 
         case .cloudBackup:
             OnboardingCloudBackupStepView(
+                branch: manager.state.branch,
                 onEnabled: { manager.dispatch(.cloudBackupEnabled) },
                 onSkip: { manager.dispatch(.skipCloudBackup) }
             )

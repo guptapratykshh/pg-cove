@@ -172,6 +172,47 @@ struct OnboardingSecretWordsView: View {
 }
 
 struct OnboardingCloudBackupStepView: View {
+    let branch: OnboardingBranch?
+    let onEnabled: () -> Void
+    let onSkip: () -> Void
+
+    var body: some View {
+        if branch == .softwareImport {
+            OnboardingSoftwareImportCloudBackupStepView(
+                onEnabled: onEnabled,
+                onSkip: onSkip
+            )
+        } else {
+            OnboardingCloudBackupDetailsStepView(
+                onEnabled: onEnabled,
+                onSkip: onSkip
+            )
+        }
+    }
+}
+
+private struct OnboardingSoftwareImportCloudBackupStepView: View {
+    @State private var showingDetails = false
+
+    let onEnabled: () -> Void
+    let onSkip: () -> Void
+
+    var body: some View {
+        if showingDetails {
+            OnboardingCloudBackupDetailsStepView(
+                onEnabled: onEnabled,
+                onSkip: { showingDetails = false }
+            )
+        } else {
+            OnboardingSoftwareImportCloudBackupChoiceView(
+                onEnable: { showingDetails = true },
+                onSkip: onSkip
+            )
+        }
+    }
+}
+
+private struct OnboardingCloudBackupDetailsStepView: View {
     @State private var backupManager = CloudBackupManager.shared
     @State private var didComplete = false
     @State private var isStartingEnable = false
@@ -266,6 +307,49 @@ struct OnboardingCloudBackupStepView: View {
         guard isEnabled else { return }
         didComplete = true
         onEnabled()
+    }
+}
+
+private struct OnboardingSoftwareImportCloudBackupChoiceView: View {
+    let onEnable: () -> Void
+    let onSkip: () -> Void
+
+    var body: some View {
+        OnboardingPromptScreen(
+            icon: "icloud.and.arrow.up",
+            title: "Protect this wallet with Cloud Backup?",
+            subtitle: "Cloud Backup makes it easier to recover this wallet if you lose this device."
+        ) {
+            VStack(spacing: 14) {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("Your wallet backup is end-to-end encrypted before it leaves your device, stored in iCloud, and locked with a passkey only you control.")
+                        .font(.footnote)
+                        .foregroundStyle(.coveLightGray.opacity(0.78))
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text("You can skip this now and enable it later from settings.")
+                        .font(.footnote)
+                        .foregroundStyle(.coveLightGray.opacity(0.64))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(18)
+                .background(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(Color.duskBlue.opacity(0.5))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(Color.coveLightGray.opacity(0.14), lineWidth: 1)
+                )
+
+                Button("Enable Cloud Backup", action: onEnable)
+                    .buttonStyle(OnboardingPrimaryButtonStyle())
+
+                Button("Not Now", action: onSkip)
+                    .buttonStyle(OnboardingSecondaryButtonStyle())
+            }
+        }
     }
 }
 
