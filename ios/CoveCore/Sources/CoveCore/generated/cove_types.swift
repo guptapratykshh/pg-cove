@@ -4664,6 +4664,7 @@ enum AddressError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
     case WrongNetwork(current: Network, validFor: Network
     )
     case EmptyAddress
+    case SilentPaymentNotSupported
 
     
 
@@ -4704,6 +4705,7 @@ public struct FfiConverterTypeAddressError: FfiConverterRustBuffer {
             validFor: try FfiConverterTypeNetwork.read(from: &buf)
             )
         case 6: return .EmptyAddress
+        case 7: return .SilentPaymentNotSupported
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -4741,6 +4743,10 @@ public struct FfiConverterTypeAddressError: FfiConverterRustBuffer {
         
         case .EmptyAddress:
             writeInt(&buf, Int32(6))
+        
+        
+        case .SilentPaymentNotSupported:
+            writeInt(&buf, Int32(7))
         
         }
     }
