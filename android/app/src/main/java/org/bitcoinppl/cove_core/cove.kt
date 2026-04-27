@@ -1544,9 +1544,13 @@ internal object IntegrityCheckingUniffiLib {
     ): Short
     external fun uniffi_cove_checksum_method_rustwalletmanager_display_amount(
     ): Short
+    external fun uniffi_cove_checksum_method_rustwalletmanager_display_amount_pending_fmt(
+    ): Short
     external fun uniffi_cove_checksum_method_rustwalletmanager_display_amount_with_direction(
     ): Short
     external fun uniffi_cove_checksum_method_rustwalletmanager_display_fiat_amount(
+    ): Short
+    external fun uniffi_cove_checksum_method_rustwalletmanager_display_fiat_amount_pending_fmt(
     ): Short
     external fun uniffi_cove_checksum_method_rustwalletmanager_display_fiat_amount_with_direction(
     ): Short
@@ -1823,6 +1827,8 @@ internal object IntegrityCheckingUniffiLib {
     external fun uniffi_cove_checksum_method_wallet_id(
     ): Short
     external fun uniffi_cove_checksum_method_balance_spendable(
+    ): Short
+    external fun uniffi_cove_checksum_method_balance_untrusted_pending(
     ): Short
     external fun uniffi_cove_checksum_method_fingerprint_as_lowercase(
     ): Short
@@ -2634,9 +2640,13 @@ internal object UniffiLib {
     ): Unit
     external fun uniffi_cove_fn_method_rustwalletmanager_display_amount(`ptr`: Long,`amount`: Long,`showUnit`: Byte,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
+    external fun uniffi_cove_fn_method_rustwalletmanager_display_amount_pending_fmt(`ptr`: Long,`amount`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
     external fun uniffi_cove_fn_method_rustwalletmanager_display_amount_with_direction(`ptr`: Long,`amount`: Long,`direction`: RustBufferTransactionDirection.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_cove_fn_method_rustwalletmanager_display_fiat_amount(`ptr`: Long,`amount`: Double,`withSuffix`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_cove_fn_method_rustwalletmanager_display_fiat_amount_pending_fmt(`ptr`: Long,`amount`: Double,`withSuffix`: Byte,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_cove_fn_method_rustwalletmanager_display_fiat_amount_with_direction(`ptr`: Long,`amount`: Double,`direction`: RustBufferTransactionDirection.ByValue,`withSuffix`: Byte,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
@@ -3045,6 +3055,8 @@ internal object UniffiLib {
     external fun uniffi_cove_fn_constructor_balance_zero(uniffi_out_err: UniffiRustCallStatus, 
     ): Long
     external fun uniffi_cove_fn_method_balance_spendable(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Long
+    external fun uniffi_cove_fn_method_balance_untrusted_pending(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Long
     external fun uniffi_cove_fn_method_balance_uniffi_trait_eq_eq(`ptr`: Long,`other`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Byte
@@ -4271,10 +4283,16 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_cove_checksum_method_rustwalletmanager_display_amount() != 41368.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_cove_checksum_method_rustwalletmanager_display_amount_pending_fmt() != 5678.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_cove_checksum_method_rustwalletmanager_display_amount_with_direction() != 60498.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_cove_checksum_method_rustwalletmanager_display_fiat_amount() != 60595.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_cove_checksum_method_rustwalletmanager_display_fiat_amount_pending_fmt() != 55764.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_cove_checksum_method_rustwalletmanager_display_fiat_amount_with_direction() != 5406.toShort()) {
@@ -4689,6 +4707,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_cove_checksum_method_balance_spendable() != 31487.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_cove_checksum_method_balance_untrusted_pending() != 30274.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_cove_checksum_method_fingerprint_as_lowercase() != 43161.toShort()) {
@@ -6916,6 +6937,8 @@ public interface BalanceInterface {
     
     fun `spendable`(): Amount
     
+    fun `untrustedPending`(): Amount
+    
     companion object
 }
 
@@ -7025,6 +7048,19 @@ open class Balance: Disposable, AutoCloseable, BalanceInterface
     callWithHandle {
     uniffiRustCall() { _status ->
     UniffiLib.uniffi_cove_fn_method_balance_spendable(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    override fun `untrustedPending`(): Amount {
+            return FfiConverterTypeAmount.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_cove_fn_method_balance_untrusted_pending(
         it,
         _status)
 }
@@ -20644,6 +20680,12 @@ public interface RustWalletManagerInterface {
     fun `displayAmount`(`amount`: Amount, `showUnit`: kotlin.Boolean = true): kotlin.String
     
     /**
+     * Formats a pending BTC amount (e.g. "+ 0.00050000 BTC pending")
+     * Returns None if the amount is zero.
+     */
+    fun `displayAmountPendingFmt`(`amount`: Amount): kotlin.String?
+    
+    /**
      * Formats a BTC amount with direction prefix (e.g., "-0.00050000 BTC")
      *
      * Includes "-" prefix for outgoing transactions, no prefix for incoming.
@@ -20652,6 +20694,12 @@ public interface RustWalletManagerInterface {
     fun `displayAmountWithDirection`(`amount`: Amount, `direction`: TransactionDirection): kotlin.String
     
     fun `displayFiatAmount`(`amount`: kotlin.Double, `withSuffix`: kotlin.Boolean = true): kotlin.String
+    
+    /**
+     * Formats a pending fiat amount (e.g. "+ $50.00 pending")
+     * Returns None if the amount is zero.
+     */
+    fun `displayFiatAmountPendingFmt`(`amount`: kotlin.Double, `withSuffix`: kotlin.Boolean = true): kotlin.String?
     
     /**
      * Formats a fiat amount with direction prefix (e.g., "-$50.00")
@@ -21130,6 +21178,23 @@ open class RustWalletManager: Disposable, AutoCloseable, RustWalletManagerInterf
 
     
     /**
+     * Formats a pending BTC amount (e.g. "+ 0.00050000 BTC pending")
+     * Returns None if the amount is zero.
+     */override fun `displayAmountPendingFmt`(`amount`: Amount): kotlin.String? {
+            return FfiConverterOptionalString.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_cove_fn_method_rustwalletmanager_display_amount_pending_fmt(
+        it,
+        FfiConverterTypeAmount.lower(`amount`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
      * Formats a BTC amount with direction prefix (e.g., "-0.00050000 BTC")
      *
      * Includes "-" prefix for outgoing transactions, no prefix for incoming.
@@ -21152,6 +21217,23 @@ open class RustWalletManager: Disposable, AutoCloseable, RustWalletManagerInterf
     callWithHandle {
     uniffiRustCall() { _status ->
     UniffiLib.uniffi_cove_fn_method_rustwalletmanager_display_fiat_amount(
+        it,
+        FfiConverterDouble.lower(`amount`),FfiConverterBoolean.lower(`withSuffix`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Formats a pending fiat amount (e.g. "+ $50.00 pending")
+     * Returns None if the amount is zero.
+     */override fun `displayFiatAmountPendingFmt`(`amount`: kotlin.Double, `withSuffix`: kotlin.Boolean): kotlin.String? {
+            return FfiConverterOptionalString.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_cove_fn_method_rustwalletmanager_display_fiat_amount_pending_fmt(
         it,
         FfiConverterDouble.lower(`amount`),FfiConverterBoolean.lower(`withSuffix`),_status)
 }
