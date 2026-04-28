@@ -1,6 +1,6 @@
 use cove_cspp::master_key::MasterKey;
 use cove_cspp::master_key_crypto;
-use cove_device::cloud_storage::CloudStorage;
+use cove_device::cloud_storage::CloudStorageClient;
 use cove_device::keychain::Keychain;
 use cove_device::passkey::PasskeyAccess;
 use cove_tokio::unblock;
@@ -60,12 +60,12 @@ struct WrapperRepairCredentials {
 }
 
 struct LocalKeyVerifier {
-    cloud: CloudStorage,
+    cloud: CloudStorageClient,
     namespace: String,
 }
 
 impl LocalKeyVerifier {
-    fn new(cloud: &CloudStorage, namespace: &str) -> Self {
+    fn new(cloud: &CloudStorageClient, namespace: &str) -> Self {
         Self { cloud: cloud.clone(), namespace: namespace.to_owned() }
     }
 
@@ -112,7 +112,7 @@ impl LocalKeyVerifier {
 pub(super) struct WrapperRepairOperation {
     manager: RustCloudBackupManager,
     keychain: Keychain,
-    cloud: CloudStorage,
+    cloud: CloudStorageClient,
     passkey: PasskeyAccess,
     namespace: String,
 }
@@ -121,7 +121,7 @@ impl WrapperRepairOperation {
     pub(super) fn new(
         manager: &RustCloudBackupManager,
         keychain: &Keychain,
-        cloud: &CloudStorage,
+        cloud: &CloudStorageClient,
         passkey: &PasskeyAccess,
         namespace: &str,
     ) -> Self {
@@ -159,7 +159,7 @@ impl WrapperRepairOperation {
         self.cloud
             .upload_master_key_backup(self.namespace.clone(), backup_json)
             .await
-            .map_err_str(CloudBackupError::Cloud)
+            .map_err(CloudBackupError::CloudStorage)
             .map_err(WrapperRepairError::Operation)?;
 
         self.keychain

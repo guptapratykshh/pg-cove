@@ -97,7 +97,7 @@ impl RustCloudBackupManager {
         namespace: String,
         issues: &mut Vec<BackupIntegrityIssue>,
     ) {
-        let cloud = CloudStorage::global();
+        let cloud = CloudStorage::global_silent_client();
         let wallet_record_ids = match cloud.list_wallet_backups(namespace.clone()).await {
             Ok(wallet_record_ids) => wallet_record_ids,
             Err(error) => {
@@ -107,14 +107,15 @@ impl RustCloudBackupManager {
             }
         };
 
-        let remote_wallet_truth = match self.load_remote_wallet_truth(&wallet_record_ids).await {
-            Ok(remote_wallet_truth) => remote_wallet_truth,
-            Err(error) => {
-                warn!("Backup integrity: remote truth refresh failed: {error}");
-                issues.push(BackupIntegrityIssue::RemoteBackupFreshnessUnknown);
-                return;
-            }
-        };
+        let remote_wallet_truth =
+            match self.load_remote_wallet_truth(&wallet_record_ids, cloud.clone()).await {
+                Ok(remote_wallet_truth) => remote_wallet_truth,
+                Err(error) => {
+                    warn!("Backup integrity: remote truth refresh failed: {error}");
+                    issues.push(BackupIntegrityIssue::RemoteBackupFreshnessUnknown);
+                    return;
+                }
+            };
 
         let inventory = match CloudWalletInventory::load_with_remote_truth(
             &wallet_record_ids,
@@ -176,7 +177,7 @@ impl RustCloudBackupManager {
         namespace: &str,
         fallback_wallet_record_ids: &[String],
     ) {
-        let cloud = CloudStorage::global();
+        let cloud = CloudStorage::global_silent_client();
         let wallet_record_ids = match cloud.list_wallet_backups(namespace.to_string()).await {
             Ok(wallet_record_ids) => wallet_record_ids,
             Err(error) => {
@@ -185,13 +186,14 @@ impl RustCloudBackupManager {
             }
         };
 
-        let remote_wallet_truth = match self.load_remote_wallet_truth(&wallet_record_ids).await {
-            Ok(remote_wallet_truth) => remote_wallet_truth,
-            Err(error) => {
-                warn!("Backup integrity: detail remote truth refresh failed: {error}");
-                return;
-            }
-        };
+        let remote_wallet_truth =
+            match self.load_remote_wallet_truth(&wallet_record_ids, cloud.clone()).await {
+                Ok(remote_wallet_truth) => remote_wallet_truth,
+                Err(error) => {
+                    warn!("Backup integrity: detail remote truth refresh failed: {error}");
+                    return;
+                }
+            };
 
         let inventory = match CloudWalletInventory::load_with_remote_truth(
             &wallet_record_ids,

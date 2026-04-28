@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use cove_cspp::backup_data::EncryptedMasterKeyBackup;
-use cove_device::cloud_storage::CloudStorage;
+use cove_device::cloud_storage::CloudStorageClient;
 use cove_device::passkey::{PasskeyAccess, PasskeyError};
 use cove_tokio::unblock;
 use rand::RngExt as _;
@@ -131,7 +131,7 @@ pub async fn discover_or_create_prf_key_without_persisting(
 
 /// Try to match the selected passkey against cloud namespaces
 pub async fn try_match_namespace_with_passkey(
-    cloud: &CloudStorage,
+    cloud: &CloudStorageClient,
     passkey: &PasskeyAccess,
     namespaces: &[String],
 ) -> Result<NamespaceMatchOutcome, CloudBackupError> {

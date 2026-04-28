@@ -480,15 +480,14 @@ impl RustOnboardingManager {
                 return;
             }
 
-            let cloud = CloudStorage::global().clone();
-            let outcome = determine_cloud_check_outcome_async(
-                || {
-                    let cloud = cloud.clone();
-                    async move { cloud.has_any_cloud_backup().await }
-                },
-                |duration| tokio::time::sleep(duration),
-            )
-            .await;
+            let cloud = CloudStorage::global_silent_client();
+            let check_cloud_backup = || {
+                let cloud = cloud.clone();
+                async move { cloud.has_any_cloud_backup().await }
+            };
+
+            let outcome =
+                determine_cloud_check_outcome(check_cloud_backup, tokio::time::sleep).await;
             me.finish_cloud_check(outcome);
         });
     }
@@ -1570,6 +1569,9 @@ impl RestoreOrigin {
 
 fn classify_cloud_check_error(error: &CloudStorageError) -> CloudCheckIssue {
     match RustCloudBackupManager::cloud_storage_issue(error) {
+        crate::manager::cloud_backup_manager::CloudStorageIssue::AuthorizationRequired => {
+            CloudCheckIssue::CloudUnavailable
+        }
         crate::manager::cloud_backup_manager::CloudStorageIssue::Offline => {
             CloudCheckIssue::Offline
         }
@@ -1587,18 +1589,18 @@ fn classify_cloud_check_error(error: &CloudStorageError) -> CloudCheckIssue {
 fn cloud_check_inconclusive_message(issue: CloudCheckIssue) -> String {
     match issue {
         CloudCheckIssue::Offline => {
-            "You're offline, so Cove can't check for an iCloud backup right now. You can continue onboarding now and check Cloud Backup later in Settings.".into()
+            "You're offline, so Cove can't check for a cloud backup right now. You can continue onboarding now and check Cloud Backup later in Settings.".into()
         }
         CloudCheckIssue::CloudUnavailable => {
-            "We couldn't confirm whether an iCloud backup is available because iCloud may be unavailable. You can still try restoring with your passkey if you're reinstalling this device.".into()
+            "We couldn't confirm whether a cloud backup is available because cloud storage may be unavailable. You can still try restoring with your passkey if you're reinstalling this device.".into()
         }
         CloudCheckIssue::Unknown => {
-            "We couldn't confirm whether an iCloud backup is available. You can still try restoring with your passkey if you're reinstalling this device.".into()
+            "We couldn't confirm whether a cloud backup is available. You can still try restoring with your passkey if you're reinstalling this device.".into()
         }
     }
 }
 
-async fn determine_cloud_check_outcome_async<F, Fut, S>(
+async fn determine_cloud_check_outcome<F, Fut, S>(
     mut has_any_cloud_backup: F,
     sleep: S,
 ) -> CloudCheckOutcome
@@ -2524,7 +2526,7 @@ mod tests {
     async fn cloud_check_false_short_circuits_without_sleeping() {
         let slept = Arc::new(Mutex::new(Vec::new()));
         let sleep_log = Arc::clone(&slept);
-        let outcome = determine_cloud_check_outcome_async(
+        let outcome = determine_cloud_check_outcome(
             || async { Ok(false) },
             move |duration| {
                 let sleep_log = Arc::clone(&sleep_log);
@@ -2541,7 +2543,7 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn cloud_check_retries_errors_and_returns_inconclusive() {
-        let outcome = determine_cloud_check_outcome_async(
+        let outcome = determine_cloud_check_outcome(
             || async { Err(CloudStorageError::NotAvailable("network timed out".into())) },
             |_| async {},
         )

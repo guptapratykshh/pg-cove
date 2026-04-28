@@ -1,7 +1,7 @@
 use cove_cspp::backup_data::EncryptedMasterKeyBackup;
 use cove_cspp::master_key::MasterKey;
 use cove_cspp::master_key_crypto;
-use cove_device::cloud_storage::{CloudStorage, CloudStorageError};
+use cove_device::cloud_storage::{CloudStorage, CloudStorageClient, CloudStorageError};
 use cove_device::keychain::Keychain;
 use cove_device::passkey::{PasskeyAccess, PasskeyCredentialPresence};
 use cove_util::ResultExt as _;
@@ -40,7 +40,7 @@ pub(crate) struct VerificationSession {
     pub(crate) manager: RustCloudBackupManager,
     pub(crate) keychain: Keychain,
     pub(crate) cspp: cove_cspp::Cspp<Keychain>,
-    pub(crate) cloud: CloudStorage,
+    pub(crate) cloud: CloudStorageClient,
     pub(crate) passkey: PasskeyAccess,
     pub(crate) namespace: String,
     pub(crate) report: DeepVerificationReport,
@@ -65,7 +65,7 @@ impl VerificationSession {
             manager: manager.clone(),
             keychain,
             cspp,
-            cloud: CloudStorage::global().clone(),
+            cloud: CloudStorage::global_explicit_client(),
             passkey: PasskeyAccess::global().clone(),
             namespace: manager.current_namespace_id()?,
             report: DeepVerificationReport {
@@ -132,10 +132,11 @@ impl VerificationSession {
     async fn load_wallet_inventory(&mut self) -> Option<DeepVerificationResult> {
         match self.cloud.list_wallet_backups(self.namespace.clone()).await {
             Ok(ids) => {
-                let remote_wallet_truth = match self.manager.load_remote_wallet_truth(&ids).await {
-                    Ok(remote_wallet_truth) => remote_wallet_truth,
-                    Err(error) => return Some(self.remote_truth_retry_result(&error)),
-                };
+                let remote_wallet_truth =
+                    match self.manager.load_remote_wallet_truth(&ids, self.cloud.clone()).await {
+                        Ok(remote_wallet_truth) => remote_wallet_truth,
+                        Err(error) => return Some(self.remote_truth_retry_result(&error)),
+                    };
                 self.manager.cleanup_confirmed_pending_blobs(&remote_wallet_truth);
 
                 let detail = match self
@@ -331,11 +332,14 @@ impl VerificationSession {
         self.report.wallets_verified = verified;
         self.report.wallets_failed = failed;
         self.report.wallets_unsupported = unsupported;
-        let remote_wallet_truth =
-            match self.manager.load_remote_wallet_truth(&wallet_record_ids).await {
-                Ok(remote_wallet_truth) => remote_wallet_truth,
-                Err(error) => return Some(self.remote_truth_retry_result(&error)),
-            };
+        let remote_wallet_truth = match self
+            .manager
+            .load_remote_wallet_truth(&wallet_record_ids, self.cloud.clone())
+            .await
+        {
+            Ok(remote_wallet_truth) => remote_wallet_truth,
+            Err(error) => return Some(self.remote_truth_retry_result(&error)),
+        };
 
         let unsynced = match CloudWalletInventory::load_with_remote_truth(
             &wallet_record_ids,
@@ -392,10 +396,11 @@ impl VerificationSession {
             }
         };
 
-        let remote_wallet_truth = match self.manager.load_remote_wallet_truth(&updated_ids).await {
-            Ok(remote_wallet_truth) => remote_wallet_truth,
-            Err(error) => return Some(self.remote_truth_retry_result(&error)),
-        };
+        let remote_wallet_truth =
+            match self.manager.load_remote_wallet_truth(&updated_ids, self.cloud.clone()).await {
+                Ok(remote_wallet_truth) => remote_wallet_truth,
+                Err(error) => return Some(self.remote_truth_retry_result(&error)),
+            };
         self.manager.cleanup_confirmed_pending_blobs(&remote_wallet_truth);
         let unconfirmed_pending_uploads = pending_uploads
             .iter()
