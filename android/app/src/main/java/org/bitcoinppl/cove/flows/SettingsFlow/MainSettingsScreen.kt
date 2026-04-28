@@ -48,6 +48,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -68,6 +69,7 @@ import org.bitcoinppl.cove.ui.theme.MaterialSpacing
 import org.bitcoinppl.cove.Auth
 import org.bitcoinppl.cove.Log
 import org.bitcoinppl.cove.R
+import org.bitcoinppl.cove.cloudbackup.CloudBackupPresentationBlocker
 import org.bitcoinppl.cove.cloudbackup.LocalCloudBackupPresentationCoordinator
 import org.bitcoinppl.cove.findFragmentActivity
 import org.bitcoinppl.cove.views.MaterialDivider
@@ -129,6 +131,25 @@ fun MainSettingsScreen(
     var showBackupImport by remember { mutableStateOf(false) }
     var showBackupVerify by remember { mutableStateOf(false) }
     var showBackupExportAuth by remember { mutableStateOf(false) }
+    val isLocalModalPresented =
+        showImportExportWarning ||
+            showBackupExport ||
+            showBackupImport ||
+            showBackupVerify ||
+            showBackupExportAuth
+
+    DisposableEffect(cloudBackupPresentationCoordinator, isLocalModalPresented) {
+        cloudBackupPresentationCoordinator?.setBlocker(
+            CloudBackupPresentationBlocker.SETTINGS_LOCAL_MODAL,
+            isLocalModalPresented,
+        )
+        onDispose {
+            cloudBackupPresentationCoordinator?.setBlocker(
+                CloudBackupPresentationBlocker.SETTINGS_LOCAL_MODAL,
+                false,
+            )
+        }
+    }
 
     // refresh beta state when returning from About screen
     LaunchedEffect(Unit) {

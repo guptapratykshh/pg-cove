@@ -311,18 +311,18 @@ fun CloudBackupPresentationHost(
         }
     }
 
+    DisposableEffect(coordinator) {
+        onDispose {
+            coordinator.dispose()
+        }
+    }
+
     LaunchedEffect(context) {
         coordinator.update(context)
     }
 
     LaunchedEffect(manager.promptIntent) {
         coordinator.reconcile()
-    }
-
-    DisposableEffect(coordinator) {
-        onDispose {
-            coordinator.dispose()
-        }
     }
 
     androidx.compose.runtime.CompositionLocalProvider(
