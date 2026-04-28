@@ -133,7 +133,7 @@ compile-ios:
 [group('build')]
 [working-directory: 'android']
 compile-android:
-    ./gradlew assembleDebug && just notf "done compile android"
+    ./gradlew assembleDevDebug && just notf "done compile android"
 
 # ------------------------------------------------------------------------------
 # test
