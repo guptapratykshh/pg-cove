@@ -172,7 +172,9 @@ struct SendFlowConfirmScreen: View {
                                     signedTransaction: txn
                                 )
                             case .signedPsbt:
-                                guard let finalizedTransaction else { return }
+                                guard let finalizedTransaction else {
+                                    throw SendConfirmationError.unfinalizedSignedPsbt
+                                }
                                 _ = try await manager.rust.broadcastTransaction(
                                     signedTransaction: finalizedTransaction
                                 )
@@ -245,6 +247,14 @@ struct SendFlowConfirmScreen: View {
                 }
             )
         }
+    }
+}
+
+private enum SendConfirmationError: LocalizedError {
+    case unfinalizedSignedPsbt
+
+    var errorDescription: String? {
+        "Unable to finalize transaction"
     }
 }
 
