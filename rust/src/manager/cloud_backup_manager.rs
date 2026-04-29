@@ -1,4 +1,5 @@
 mod cloud_inventory;
+mod detail;
 mod ops;
 mod pending;
 mod prompt;
@@ -43,14 +44,14 @@ use crate::wallet::metadata::{
 };
 
 use self::cloud_inventory::RemoteWalletTruth;
+pub use self::detail::{
+    CloudOnlyOperation, CloudOnlyState, RecoveryAction, RecoveryState, SyncState, VerificationState,
+};
 use self::prompt::CloudBackupPromptState;
 use self::runtime_actor::{CloudBackupOperation, CloudBackupRuntimeActor, RestoreOperation};
 use self::wallets::wallet_metadata_change_requires_upload;
 use self::wallets::{
     UnpersistedPrfKey, WalletBackupLookup, WalletBackupReader, all_local_wallets, count_all_wallets,
-};
-use super::cloud_backup_detail_manager::{
-    CloudOnlyOperation, CloudOnlyState, RecoveryState, SyncState, VerificationState,
 };
 use super::connectivity_manager::CONNECTIVITY_MANAGER;
 
@@ -544,6 +545,9 @@ pub(crate) enum CloudBackupError {
     #[error("internal error: {0}")]
     Internal(String),
 
+    #[error("compatibility error: {0}")]
+    Compatibility(String),
+
     #[error("Passkey didn't match any backups, please try a new one")]
     PasskeyMismatch,
 
@@ -649,6 +653,7 @@ impl RustCloudBackupManager {
             | CloudBackupError::Passkey(_)
             | CloudBackupError::Crypto(_)
             | CloudBackupError::Internal(_)
+            | CloudBackupError::Compatibility(_)
             | CloudBackupError::PasskeyMismatch
             | CloudBackupError::PasskeyDiscoveryCancelled
             | CloudBackupError::Cancelled => CloudStorageIssue::Other,

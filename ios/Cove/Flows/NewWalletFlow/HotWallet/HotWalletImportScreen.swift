@@ -224,7 +224,7 @@ struct HotWalletImportScreen: View {
                 return
             }
 
-            try app.rust.selectWallet(id: walletMetadata.id)
+            try app.selectWalletOrThrow(walletMetadata.id)
             app.walletManager = nil
             app.resetRoute(to: .selectedWallet(walletMetadata.id))
         } catch let error as ImportWalletError {
@@ -513,8 +513,15 @@ struct HotWalletImportScreen: View {
                             return
                         }
 
-                        try? app.rust.selectWallet(id: walletId)
-                        app.resetRoute(to: .selectedWallet(walletId))
+                        do {
+                            try app.selectWalletOrThrow(walletId)
+                            app.resetRoute(to: .selectedWallet(walletId))
+                        } catch {
+                            app.alertState = TaggedItem(.general(
+                                title: "Unable to Select Wallet",
+                                message: error.localizedDescription
+                            ))
+                        }
                     }
                 }
             )

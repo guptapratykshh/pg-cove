@@ -1178,10 +1178,6 @@ internal object IntegrityCheckingUniffiLib {
     ): Short
     external fun uniffi_cove_checksum_method_ffiapp_save_tap_signer_backup(
     ): Short
-    external fun uniffi_cove_checksum_method_ffiapp_select_latest_or_new_wallet(
-    ): Short
-    external fun uniffi_cove_checksum_method_ffiapp_select_wallet(
-    ): Short
     external fun uniffi_cove_checksum_method_ffiapp_state(
     ): Short
     external fun uniffi_cove_checksum_method_ffiapp_unverified_wallet_ids(
@@ -1382,8 +1378,6 @@ internal object IntegrityCheckingUniffiLib {
     ): Short
     external fun uniffi_cove_checksum_method_rustauthmanager_validate_security_action(
     ): Short
-    external fun uniffi_cove_checksum_method_rustcloudbackupmanager_dispatch(
-    ): Short
     external fun uniffi_cove_checksum_method_rustcloudbackupmanager_backup_new_wallet(
     ): Short
     external fun uniffi_cove_checksum_method_rustcloudbackupmanager_backup_wallet_count(
@@ -1415,6 +1409,8 @@ internal object IntegrityCheckingUniffiLib {
     external fun uniffi_cove_checksum_method_rustcloudbackupmanager_sync_persisted_state(
     ): Short
     external fun uniffi_cove_checksum_method_rustcloudbackupmanager_verify_backup_integrity(
+    ): Short
+    external fun uniffi_cove_checksum_method_rustcloudbackupmanager_dispatch(
     ): Short
     external fun uniffi_cove_checksum_method_rustcoincontrolmanager_button_presentation(
     ): Short
@@ -2088,10 +2084,6 @@ internal object UniffiLib {
     ): Unit
     external fun uniffi_cove_fn_method_ffiapp_save_tap_signer_backup(`ptr`: Long,`tapSigner`: Long,`backup`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Byte
-    external fun uniffi_cove_fn_method_ffiapp_select_latest_or_new_wallet(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
-    ): Unit
-    external fun uniffi_cove_fn_method_ffiapp_select_wallet(`ptr`: Long,`id`: RustBufferWalletId.ByValue,`nextRoute`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-    ): Unit
     external fun uniffi_cove_fn_method_ffiapp_state(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_cove_fn_method_ffiapp_unverified_wallet_ids(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
@@ -2420,8 +2412,6 @@ internal object UniffiLib {
     ): Unit
     external fun uniffi_cove_fn_constructor_rustcloudbackupmanager_new(uniffi_out_err: UniffiRustCallStatus, 
     ): Long
-    external fun uniffi_cove_fn_method_rustcloudbackupmanager_dispatch(`ptr`: Long,`action`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-    ): Unit
     external fun uniffi_cove_fn_method_rustcloudbackupmanager_backup_new_wallet(`ptr`: Long,`metadata`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
     external fun uniffi_cove_fn_method_rustcloudbackupmanager_backup_wallet_count(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
@@ -2454,6 +2444,8 @@ internal object UniffiLib {
     ): Unit
     external fun uniffi_cove_fn_method_rustcloudbackupmanager_verify_backup_integrity(`ptr`: Long,
     ): Long
+    external fun uniffi_cove_fn_method_rustcloudbackupmanager_dispatch(`ptr`: Long,`action`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
     external fun uniffi_cove_fn_clone_rustcoincontrolmanager(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Long
     external fun uniffi_cove_fn_free_rustcoincontrolmanager(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
@@ -3682,7 +3674,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_cove_checksum_method_ffiapp_delete_corrupted_wallet() != 27181.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_cove_checksum_method_ffiapp_dispatch() != 37137.toShort()) {
+    if (lib.uniffi_cove_checksum_method_ffiapp_dispatch() != 7288.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_cove_checksum_method_ffiapp_email_mailto() != 41824.toShort()) {
@@ -3740,12 +3732,6 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_cove_checksum_method_ffiapp_save_tap_signer_backup() != 24217.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
-    if (lib.uniffi_cove_checksum_method_ffiapp_select_latest_or_new_wallet() != 31849.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
-    if (lib.uniffi_cove_checksum_method_ffiapp_select_wallet() != 51673.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_cove_checksum_method_ffiapp_state() != 49253.toShort()) {
@@ -4048,9 +4034,6 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_cove_checksum_method_rustauthmanager_validate_security_action() != 4302.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_cove_checksum_method_rustcloudbackupmanager_dispatch() != 54131.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
     if (lib.uniffi_cove_checksum_method_rustcloudbackupmanager_backup_new_wallet() != 25342.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -4097,6 +4080,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_cove_checksum_method_rustcloudbackupmanager_verify_backup_integrity() != 35162.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_cove_checksum_method_rustcloudbackupmanager_dispatch() != 23570.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_cove_checksum_method_rustcoincontrolmanager_button_presentation() != 24764.toShort()) {
@@ -10044,17 +10030,6 @@ public interface FfiAppInterface {
      */
     fun `saveTapSignerBackup`(`tapSigner`: TapSigner, `backup`: kotlin.ByteArray): kotlin.Boolean
     
-    /**
-     * Select the latest (most recently used) wallet or navigate to new wallet flow
-     * This selects the wallet with the most recent scan activity
-     */
-    fun `selectLatestOrNewWallet`()
-    
-    /**
-     * Select a wallet
-     */
-    fun `selectWallet`(`id`: WalletId, `nextRoute`: Route? = null)
-    
     fun `state`(): AppState
     
     /**
@@ -10260,10 +10235,11 @@ open class FfiApp: Disposable, AutoCloseable, FfiAppInterface
     
     /**
      * Frontend calls this method to send events to the rust application logic
-     */override fun `dispatch`(`action`: AppAction)
+     */
+    @Throws(AppException::class)override fun `dispatch`(`action`: AppAction)
         = 
     callWithHandle {
-    uniffiRustCall() { _status ->
+    uniffiRustCallWithError(AppException) { _status ->
     UniffiLib.uniffi_cove_fn_method_ffiapp_dispatch(
         it,
         FfiConverterTypeAppAction.lower(`action`),_status)
@@ -10563,38 +10539,6 @@ open class FfiApp: Disposable, AutoCloseable, FfiAppInterface
     }
     )
     }
-    
-
-    
-    /**
-     * Select the latest (most recently used) wallet or navigate to new wallet flow
-     * This selects the wallet with the most recent scan activity
-     */override fun `selectLatestOrNewWallet`()
-        = 
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_cove_fn_method_ffiapp_select_latest_or_new_wallet(
-        it,
-        _status)
-}
-    }
-    
-    
-
-    
-    /**
-     * Select a wallet
-     */
-    @Throws(DatabaseException::class)override fun `selectWallet`(`id`: WalletId, `nextRoute`: Route?)
-        = 
-    callWithHandle {
-    uniffiRustCallWithError(DatabaseException) { _status ->
-    UniffiLib.uniffi_cove_fn_method_ffiapp_select_wallet(
-        it,
-        FfiConverterTypeWalletId.lower(`id`),FfiConverterOptionalTypeRoute.lower(`nextRoute`),_status)
-}
-    }
-    
     
 
     override fun `state`(): AppState {
@@ -17819,8 +17763,6 @@ public object FfiConverterTypeRustAuthManager: FfiConverter<RustAuthManager, Lon
 
 public interface RustCloudBackupManagerInterface {
     
-    fun `dispatch`(`action`: CloudBackupManagerAction)
-    
     /**
      * Back up a newly created wallet, fire-and-forget
      *
@@ -17883,6 +17825,8 @@ public interface RustCloudBackupManagerInterface {
      * Background startup health check for cloud backup integrity
      */
     suspend fun `verifyBackupIntegrity`(): kotlin.String?
+    
+    fun `dispatch`(`action`: CloudBackupManagerAction)
     
     companion object
 }
@@ -17995,18 +17939,6 @@ open class RustCloudBackupManager: Disposable, AutoCloseable, RustCloudBackupMan
             UniffiLib.uniffi_cove_fn_clone_rustcloudbackupmanager(handle, status)
         }
     }
-
-    override fun `dispatch`(`action`: CloudBackupManagerAction)
-        = 
-    callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_cove_fn_method_rustcloudbackupmanager_dispatch(
-        it,
-        FfiConverterTypeCloudBackupManagerAction.lower(`action`),_status)
-}
-    }
-    
-    
 
     
     /**
@@ -18246,6 +18178,18 @@ open class RustCloudBackupManager: Disposable, AutoCloseable, RustCloudBackupMan
         UniffiNullRustCallStatusErrorHandler,
     )
     }
+
+    override fun `dispatch`(`action`: CloudBackupManagerAction)
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_cove_fn_method_rustcloudbackupmanager_dispatch(
+        it,
+        FfiConverterTypeCloudBackupManagerAction.lower(`action`),_status)
+}
+    }
+    
+    
 
     
 
@@ -30302,6 +30246,18 @@ sealed class AppAction: Disposable  {
     object PopRoute : AppAction()
     
     
+    data class SelectWallet(
+        val `id`: org.bitcoinppl.cove_core.types.WalletId) : AppAction()
+        
+    {
+        
+
+        companion object
+    }
+    
+    object SelectLatestOrNewWallet : AppAction()
+    
+    
     data class ChangeNetwork(
         val `network`: org.bitcoinppl.cove_core.types.Network) : AppAction()
         
@@ -30371,6 +30327,15 @@ sealed class AppAction: Disposable  {
             }
             is AppAction.PopRoute -> {// Nothing to destroy
             }
+            is AppAction.SelectWallet -> {
+                
+    Disposable.destroy(
+        this.`id`
+    )
+                
+            }
+            is AppAction.SelectLatestOrNewWallet -> {// Nothing to destroy
+            }
             is AppAction.ChangeNetwork -> {
                 
     Disposable.destroy(
@@ -30431,22 +30396,26 @@ public object FfiConverterTypeAppAction : FfiConverterRustBuffer<AppAction>{
                 FfiConverterTypeRoute.read(buf),
                 )
             3 -> AppAction.PopRoute
-            4 -> AppAction.ChangeNetwork(
+            4 -> AppAction.SelectWallet(
+                FfiConverterTypeWalletId.read(buf),
+                )
+            5 -> AppAction.SelectLatestOrNewWallet
+            6 -> AppAction.ChangeNetwork(
                 FfiConverterTypeNetwork.read(buf),
                 )
-            5 -> AppAction.ChangeColorScheme(
+            7 -> AppAction.ChangeColorScheme(
                 FfiConverterTypeColorSchemeSelection.read(buf),
                 )
-            6 -> AppAction.ChangeFiatCurrency(
+            8 -> AppAction.ChangeFiatCurrency(
                 FfiConverterTypeFiatCurrency.read(buf),
                 )
-            7 -> AppAction.SetSelectedNode(
+            9 -> AppAction.SetSelectedNode(
                 FfiConverterTypeNode.read(buf),
                 )
-            8 -> AppAction.UpdateFiatPrices
-            9 -> AppAction.UpdateFees
-            10 -> AppAction.AcceptTerms
-            11 -> AppAction.RefreshAfterImport
+            10 -> AppAction.UpdateFiatPrices
+            11 -> AppAction.UpdateFees
+            12 -> AppAction.AcceptTerms
+            13 -> AppAction.RefreshAfterImport
             else -> throw RuntimeException("invalid enum value, something is very wrong!!")
         }
     }
@@ -30467,6 +30436,19 @@ public object FfiConverterTypeAppAction : FfiConverterRustBuffer<AppAction>{
             )
         }
         is AppAction.PopRoute -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is AppAction.SelectWallet -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterTypeWalletId.allocationSize(value.`id`)
+            )
+        }
+        is AppAction.SelectLatestOrNewWallet -> {
             // Add the size for the Int that specifies the variant plus the size needed for all fields
             (
                 4UL
@@ -30542,40 +30524,49 @@ public object FfiConverterTypeAppAction : FfiConverterRustBuffer<AppAction>{
                 buf.putInt(3)
                 Unit
             }
-            is AppAction.ChangeNetwork -> {
+            is AppAction.SelectWallet -> {
                 buf.putInt(4)
+                FfiConverterTypeWalletId.write(value.`id`, buf)
+                Unit
+            }
+            is AppAction.SelectLatestOrNewWallet -> {
+                buf.putInt(5)
+                Unit
+            }
+            is AppAction.ChangeNetwork -> {
+                buf.putInt(6)
                 FfiConverterTypeNetwork.write(value.`network`, buf)
                 Unit
             }
             is AppAction.ChangeColorScheme -> {
-                buf.putInt(5)
+                buf.putInt(7)
                 FfiConverterTypeColorSchemeSelection.write(value.v1, buf)
                 Unit
             }
             is AppAction.ChangeFiatCurrency -> {
-                buf.putInt(6)
+                buf.putInt(8)
                 FfiConverterTypeFiatCurrency.write(value.v1, buf)
                 Unit
             }
             is AppAction.SetSelectedNode -> {
-                buf.putInt(7)
+                buf.putInt(9)
                 FfiConverterTypeNode.write(value.v1, buf)
                 Unit
             }
             is AppAction.UpdateFiatPrices -> {
-                buf.putInt(8)
-                Unit
-            }
-            is AppAction.UpdateFees -> {
-                buf.putInt(9)
-                Unit
-            }
-            is AppAction.AcceptTerms -> {
                 buf.putInt(10)
                 Unit
             }
-            is AppAction.RefreshAfterImport -> {
+            is AppAction.UpdateFees -> {
                 buf.putInt(11)
+                Unit
+            }
+            is AppAction.AcceptTerms -> {
+                buf.putInt(12)
+                Unit
+            }
+            is AppAction.RefreshAfterImport -> {
+                buf.putInt(13)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
@@ -31544,6 +31535,14 @@ sealed class AppException: kotlin.Exception() {
             get() = "v1=${ v1 }"
     }
     
+    class WalletSelection(
+        
+        val v1: kotlin.String
+        ) : AppException() {
+        override val message
+            get() = "v1=${ v1 }"
+    }
+    
 
     
 
@@ -31578,6 +31577,9 @@ public object FfiConverterTypeAppError : FfiConverterRustBuffer<AppException> {
             2 -> AppException.FeesException(
                 FfiConverterString.read(buf),
                 )
+            3 -> AppException.WalletSelection(
+                FfiConverterString.read(buf),
+                )
             else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
         }
     }
@@ -31594,6 +31596,11 @@ public object FfiConverterTypeAppError : FfiConverterRustBuffer<AppException> {
                 4UL
                 + FfiConverterString.allocationSize(value.v1)
             )
+            is AppException.WalletSelection -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterString.allocationSize(value.v1)
+            )
         }
     }
 
@@ -31606,6 +31613,11 @@ public object FfiConverterTypeAppError : FfiConverterRustBuffer<AppException> {
             }
             is AppException.FeesException -> {
                 buf.putInt(2)
+                FfiConverterString.write(value.v1, buf)
+                Unit
+            }
+            is AppException.WalletSelection -> {
+                buf.putInt(3)
                 FfiConverterString.write(value.v1, buf)
                 Unit
             }
@@ -49191,6 +49203,14 @@ sealed class WalletCreationException: kotlin.Exception() {
             get() = "v1=${ v1 }"
     }
     
+    class Unexpected(
+        
+        val v1: kotlin.String
+        ) : WalletCreationException() {
+        override val message
+            get() = "v1=${ v1 }"
+    }
+    
     class MultiFormat(
         
         val v1: MultiFormatException
@@ -49242,7 +49262,10 @@ public object FfiConverterTypeWalletCreationError : FfiConverterRustBuffer<Walle
             5 -> WalletCreationException.Import(
                 FfiConverterString.read(buf),
                 )
-            6 -> WalletCreationException.MultiFormat(
+            6 -> WalletCreationException.Unexpected(
+                FfiConverterString.read(buf),
+                )
+            7 -> WalletCreationException.MultiFormat(
                 FfiConverterTypeMultiFormatError.read(buf),
                 )
             else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
@@ -49272,6 +49295,11 @@ public object FfiConverterTypeWalletCreationError : FfiConverterRustBuffer<Walle
                 + FfiConverterString.allocationSize(value.v1)
             )
             is WalletCreationException.Import -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterString.allocationSize(value.v1)
+            )
+            is WalletCreationException.Unexpected -> (
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4UL
                 + FfiConverterString.allocationSize(value.v1)
@@ -49311,8 +49339,13 @@ public object FfiConverterTypeWalletCreationError : FfiConverterRustBuffer<Walle
                 FfiConverterString.write(value.v1, buf)
                 Unit
             }
-            is WalletCreationException.MultiFormat -> {
+            is WalletCreationException.Unexpected -> {
                 buf.putInt(6)
+                FfiConverterString.write(value.v1, buf)
+                Unit
+            }
+            is WalletCreationException.MultiFormat -> {
+                buf.putInt(7)
                 FfiConverterTypeMultiFormatError.write(value.v1, buf)
                 Unit
             }
@@ -53773,38 +53806,6 @@ public object FfiConverterOptionalTypeOnboardingBranch: FfiConverterRustBuffer<O
         } else {
             buf.put(1)
             FfiConverterTypeOnboardingBranch.write(value, buf)
-        }
-    }
-}
-
-
-
-
-/**
- * @suppress
- */
-public object FfiConverterOptionalTypeRoute: FfiConverterRustBuffer<Route?> {
-    override fun read(buf: ByteBuffer): Route? {
-        if (buf.get().toInt() == 0) {
-            return null
-        }
-        return FfiConverterTypeRoute.read(buf)
-    }
-
-    override fun allocationSize(value: Route?): ULong {
-        if (value == null) {
-            return 1UL
-        } else {
-            return 1UL + FfiConverterTypeRoute.allocationSize(value)
-        }
-    }
-
-    override fun write(value: Route?, buf: ByteBuffer) {
-        if (value == null) {
-            buf.put(0)
-        } else {
-            buf.put(1)
-            FfiConverterTypeRoute.write(value, buf)
         }
     }
 }

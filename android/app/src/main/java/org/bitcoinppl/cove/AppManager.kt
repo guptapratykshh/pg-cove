@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import org.bitcoinppl.cove.cloudbackup.CloudBackupManager
@@ -29,6 +30,8 @@ class AppManager private constructor() : FfiReconcile {
 
     // Scope for UI-bound work; reconcile() hops to Main here
     private val mainScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var navigationGeneration = 0L
+    private var pendingSidebarNavigationJob: Job? = null
 
     // rust bridge - not observable
     internal var rust: FfiApp = FfiApp()
@@ -195,6 +198,10 @@ class AppManager private constructor() : FfiReconcile {
      * clears all cached data and reinitializes
      */
     fun reset() {
+        pendingSidebarNavigationJob?.cancel()
+        pendingSidebarNavigationJob = null
+        advanceNavigationGeneration()
+
         // close managers before clearing them
         walletManager?.close()
         sendFlowManager?.close()
@@ -221,11 +228,37 @@ class AppManager private constructor() : FfiReconcile {
      */
     fun selectWallet(id: WalletId) {
         try {
-            rust.selectWallet(id)
-            isSidebarVisible = false
+            selectWalletOrThrow(id)
         } catch (e: Exception) {
             Log.e(tag, "Unable to select wallet $id", e)
         }
+    }
+
+    @Throws(Exception::class)
+    fun selectWalletOrThrow(id: WalletId) {
+        advanceNavigationGeneration()
+        selectWalletWithoutNavigationGeneration(id)
+    }
+
+    @Throws(Exception::class)
+    private fun selectWalletWithoutNavigationGeneration(id: WalletId) {
+        rust.dispatch(AppAction.SelectWallet(id))
+        isSidebarVisible = false
+    }
+
+    fun trySelectLatestOrNewWallet() {
+        try {
+            selectLatestOrNewWallet()
+        } catch (e: Exception) {
+            Log.e(tag, "Unable to select latest wallet", e)
+        }
+    }
+
+    @Throws(Exception::class)
+    fun selectLatestOrNewWallet() {
+        advanceNavigationGeneration()
+        rust.dispatch(AppAction.SelectLatestOrNewWallet)
+        isSidebarVisible = false
     }
 
     fun toggleSidebar() {
@@ -236,15 +269,55 @@ class AppManager private constructor() : FfiReconcile {
         wallets = runCatching { database.wallets().all() }.getOrElse { emptyList() }
     }
 
-    fun closeSidebarAndNavigate(action: suspend () -> Unit) {
+    fun closeSidebarAndSelectWallet(id: WalletId) {
+        closeSidebarThenNavigate {
+            try {
+                selectWalletWithoutNavigationGeneration(id)
+            } catch (e: Exception) {
+                Log.e(tag, "Unable to select wallet $id", e)
+            }
+        }
+    }
+
+    fun closeSidebarAndOpenNewWallet() {
+        closeSidebarThenNavigate {
+            if (wallets.isEmpty()) {
+                resetRouteWithoutNavigationGeneration(RouteFactory().newWalletSelect())
+            } else {
+                pushRouteWithoutNavigationGeneration(RouteFactory().newWalletSelect())
+            }
+        }
+    }
+
+    fun closeSidebarAndOpenSettings() {
+        closeSidebarThenNavigate {
+            pushRouteWithoutNavigationGeneration(Route.Settings(SettingsRoute.Main))
+        }
+    }
+
+    fun closeSidebarAndScanNfc() {
+        closeSidebarThenNavigate {
+            scanNfcWithoutNavigationGeneration()
+        }
+    }
+
+    private fun closeSidebarThenNavigate(action: suspend () -> Unit) {
+        pendingSidebarNavigationJob?.cancel()
+        val generation = advanceNavigationGeneration()
         isSidebarVisible = false
-        mainScope.launch {
+        pendingSidebarNavigationJob = mainScope.launch {
             kotlinx.coroutines.delay(SIDEBAR_NAVIGATION_DELAY_MS)
+            if (!isNavigationGenerationCurrent(generation)) return@launch
             action()
         }
     }
 
     fun pushRoute(route: Route) {
+        advanceNavigationGeneration()
+        pushRouteWithoutNavigationGeneration(route)
+    }
+
+    private fun pushRouteWithoutNavigationGeneration(route: Route) {
         Log.d(tag, "pushRoute: $route")
         isSidebarVisible = false
         val newRoutes = router.routes.toMutableList().apply { add(route) }
@@ -257,6 +330,11 @@ class AppManager private constructor() : FfiReconcile {
     }
 
     fun pushRoutes(routes: List<Route>) {
+        advanceNavigationGeneration()
+        pushRoutesWithoutNavigationGeneration(routes)
+    }
+
+    private fun pushRoutesWithoutNavigationGeneration(routes: List<Route>) {
         Log.d(tag, "pushRoutes: ${routes.size} routes")
         isSidebarVisible = false
         val newRoutes = router.routes.toMutableList().apply { addAll(routes) }
@@ -269,6 +347,7 @@ class AppManager private constructor() : FfiReconcile {
     }
 
     fun popRoute() {
+        advanceNavigationGeneration()
         Log.d(tag, "popRoute")
         if (rust.canGoBack()) {
             val newRoutes = router.routes.dropLast(1)
@@ -282,6 +361,7 @@ class AppManager private constructor() : FfiReconcile {
     }
 
     fun setRoute(routes: List<Route>) {
+        advanceNavigationGeneration()
         Log.d(tag, "setRoute: ${routes.size} routes")
 
         // only dispatch if routes actually changed
@@ -292,14 +372,25 @@ class AppManager private constructor() : FfiReconcile {
     }
 
     fun scanQr() {
+        advanceNavigationGeneration()
         sheetState = TaggedItem(AppSheetState.Qr)
     }
 
     fun scanNfc() {
+        advanceNavigationGeneration()
+        scanNfcWithoutNavigationGeneration()
+    }
+
+    private fun scanNfcWithoutNavigationGeneration() {
         sheetState = TaggedItem(AppSheetState.Nfc)
     }
 
     fun resetRoute(to: List<Route>) {
+        advanceNavigationGeneration()
+        resetRouteWithoutNavigationGeneration(to)
+    }
+
+    private fun resetRouteWithoutNavigationGeneration(to: List<Route>) {
         if (to.size > 1) {
             rust.resetNestedRoutesTo(to[0], to.drop(1))
         } else if (to.isNotEmpty()) {
@@ -308,12 +399,37 @@ class AppManager private constructor() : FfiReconcile {
     }
 
     fun resetRoute(to: Route) {
+        advanceNavigationGeneration()
+        resetRouteWithoutNavigationGeneration(to)
+    }
+
+    private fun resetRouteWithoutNavigationGeneration(to: Route) {
         rust.resetDefaultRouteTo(to)
     }
 
     fun loadAndReset(to: Route) {
+        advanceNavigationGeneration()
         rust.loadAndResetDefaultRoute(to)
     }
+
+    fun captureLoadAndResetGeneration(): Long = navigationGeneration
+
+    fun resetAfterLoadingIfCurrent(
+        generation: Long,
+        route: Route.LoadAndReset,
+        nextRoutes: List<Route>,
+    ) {
+        if (!isNavigationGenerationCurrent(generation)) return
+        if (router.default != route) return
+        rust.resetAfterLoading(nextRoutes)
+    }
+
+    private fun advanceNavigationGeneration(): Long {
+        navigationGeneration += 1
+        return navigationGeneration
+    }
+
+    private fun isNavigationGenerationCurrent(generation: Long): Boolean = generation == navigationGeneration
 
     fun agreeToTerms() {
         dispatch(AppAction.AcceptTerms)
@@ -413,7 +529,8 @@ class AppManager private constructor() : FfiReconcile {
 
     fun dispatch(action: AppAction) {
         Log.d(tag, "dispatch $action")
-        rust.dispatch(action)
+        runCatching { rust.dispatch(action) }
+            .onFailure { Log.e(tag, "Unable to dispatch app action $action", it) }
     }
 
     companion object {
@@ -425,7 +542,7 @@ class AppManager private constructor() : FfiReconcile {
          *
          * allows sidebar dismiss animation to complete to avoid visual jump
          */
-        private const val SIDEBAR_NAVIGATION_DELAY_MS = 300L
+        private const val SIDEBAR_NAVIGATION_DELAY_MS = 250L
 
         /**
          * minimum loading indicator visibility duration

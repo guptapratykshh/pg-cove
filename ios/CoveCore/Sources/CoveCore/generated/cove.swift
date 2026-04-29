@@ -2879,7 +2879,7 @@ public protocol FfiAppProtocol: AnyObject, Sendable {
     /**
      * Frontend calls this method to send events to the rust application logic
      */
-    func dispatch(action: AppAction) 
+    func dispatch(action: AppAction) throws 
     
     func emailMailto(ios: String)  -> String
     
@@ -2959,17 +2959,6 @@ public protocol FfiAppProtocol: AnyObject, Sendable {
      * Save the backup for the tap signer in the keychain
      */
     func saveTapSignerBackup(tapSigner: TapSigner, backup: Data)  -> Bool
-    
-    /**
-     * Select the latest (most recently used) wallet or navigate to new wallet flow
-     * This selects the wallet with the most recent scan activity
-     */
-    func selectLatestOrNewWallet() 
-    
-    /**
-     * Select a wallet
-     */
-    func selectWallet(id: WalletId, nextRoute: Route?) throws 
     
     func state()  -> AppState
     
@@ -3101,7 +3090,7 @@ open func deleteCorruptedWallet(id: WalletId)  {try! rustCall() {
     /**
      * Frontend calls this method to send events to the rust application logic
      */
-open func dispatch(action: AppAction)  {try! rustCall() {
+open func dispatch(action: AppAction)throws   {try rustCallWithError(FfiConverterTypeAppError_lift) {
     uniffi_cove_fn_method_ffiapp_dispatch(
             self.uniffiCloneHandle(),
         FfiConverterTypeAppAction_lower(action),$0
@@ -3317,29 +3306,6 @@ open func saveTapSignerBackup(tapSigner: TapSigner, backup: Data) -> Bool  {
         FfiConverterData.lower(backup),$0
     )
 })
-}
-    
-    /**
-     * Select the latest (most recently used) wallet or navigate to new wallet flow
-     * This selects the wallet with the most recent scan activity
-     */
-open func selectLatestOrNewWallet()  {try! rustCall() {
-    uniffi_cove_fn_method_ffiapp_select_latest_or_new_wallet(
-            self.uniffiCloneHandle(),$0
-    )
-}
-}
-    
-    /**
-     * Select a wallet
-     */
-open func selectWallet(id: WalletId, nextRoute: Route? = nil)throws   {try rustCallWithError(FfiConverterTypeDatabaseError_lift) {
-    uniffi_cove_fn_method_ffiapp_select_wallet(
-            self.uniffiCloneHandle(),
-        FfiConverterTypeWalletId_lower(id),
-        FfiConverterOptionTypeRoute.lower(nextRoute),$0
-    )
-}
 }
     
 open func state() -> AppState  {
@@ -7077,8 +7043,6 @@ public func FfiConverterTypeRustAuthManager_lower(_ value: RustAuthManager) -> U
 
 public protocol RustCloudBackupManagerProtocol: AnyObject, Sendable {
     
-    func dispatch(action: CloudBackupManagerAction) 
-    
     /**
      * Back up a newly created wallet, fire-and-forget
      *
@@ -7142,6 +7106,8 @@ public protocol RustCloudBackupManagerProtocol: AnyObject, Sendable {
      */
     func verifyBackupIntegrity() async  -> String?
     
+    func dispatch(action: CloudBackupManagerAction) 
+    
 }
 open class RustCloudBackupManager: RustCloudBackupManagerProtocol, @unchecked Sendable {
     fileprivate let handle: UInt64
@@ -7202,14 +7168,6 @@ public convenience init() {
 
     
 
-    
-open func dispatch(action: CloudBackupManagerAction)  {try! rustCall() {
-    uniffi_cove_fn_method_rustcloudbackupmanager_dispatch(
-            self.uniffiCloneHandle(),
-        FfiConverterTypeCloudBackupManagerAction_lower(action),$0
-    )
-}
-}
     
     /**
      * Back up a newly created wallet, fire-and-forget
@@ -7373,6 +7331,14 @@ open func verifyBackupIntegrity()async  -> String?  {
             errorHandler: nil
             
         )
+}
+    
+open func dispatch(action: CloudBackupManagerAction)  {try! rustCall() {
+    uniffi_cove_fn_method_rustcloudbackupmanager_dispatch(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeCloudBackupManagerAction_lower(action),$0
+    )
+}
 }
     
 
@@ -16064,6 +16030,9 @@ public enum AppAction {
     case pushRoute(Route
     )
     case popRoute
+    case selectWallet(id: WalletId
+    )
+    case selectLatestOrNewWallet
     case changeNetwork(network: Network
     )
     case changeColorScheme(ColorSchemeSelection
@@ -16105,25 +16074,30 @@ public struct FfiConverterTypeAppAction: FfiConverterRustBuffer {
         
         case 3: return .popRoute
         
-        case 4: return .changeNetwork(network: try FfiConverterTypeNetwork.read(from: &buf)
+        case 4: return .selectWallet(id: try FfiConverterTypeWalletId.read(from: &buf)
         )
         
-        case 5: return .changeColorScheme(try FfiConverterTypeColorSchemeSelection.read(from: &buf)
+        case 5: return .selectLatestOrNewWallet
+        
+        case 6: return .changeNetwork(network: try FfiConverterTypeNetwork.read(from: &buf)
         )
         
-        case 6: return .changeFiatCurrency(try FfiConverterTypeFiatCurrency.read(from: &buf)
+        case 7: return .changeColorScheme(try FfiConverterTypeColorSchemeSelection.read(from: &buf)
         )
         
-        case 7: return .setSelectedNode(try FfiConverterTypeNode.read(from: &buf)
+        case 8: return .changeFiatCurrency(try FfiConverterTypeFiatCurrency.read(from: &buf)
         )
         
-        case 8: return .updateFiatPrices
+        case 9: return .setSelectedNode(try FfiConverterTypeNode.read(from: &buf)
+        )
         
-        case 9: return .updateFees
+        case 10: return .updateFiatPrices
         
-        case 10: return .acceptTerms
+        case 11: return .updateFees
         
-        case 11: return .refreshAfterImport
+        case 12: return .acceptTerms
+        
+        case 13: return .refreshAfterImport
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -16147,40 +16121,49 @@ public struct FfiConverterTypeAppAction: FfiConverterRustBuffer {
             writeInt(&buf, Int32(3))
         
         
-        case let .changeNetwork(network):
+        case let .selectWallet(id):
             writeInt(&buf, Int32(4))
+            FfiConverterTypeWalletId.write(id, into: &buf)
+            
+        
+        case .selectLatestOrNewWallet:
+            writeInt(&buf, Int32(5))
+        
+        
+        case let .changeNetwork(network):
+            writeInt(&buf, Int32(6))
             FfiConverterTypeNetwork.write(network, into: &buf)
             
         
         case let .changeColorScheme(v1):
-            writeInt(&buf, Int32(5))
+            writeInt(&buf, Int32(7))
             FfiConverterTypeColorSchemeSelection.write(v1, into: &buf)
             
         
         case let .changeFiatCurrency(v1):
-            writeInt(&buf, Int32(6))
+            writeInt(&buf, Int32(8))
             FfiConverterTypeFiatCurrency.write(v1, into: &buf)
             
         
         case let .setSelectedNode(v1):
-            writeInt(&buf, Int32(7))
+            writeInt(&buf, Int32(9))
             FfiConverterTypeNode.write(v1, into: &buf)
             
         
         case .updateFiatPrices:
-            writeInt(&buf, Int32(8))
-        
-        
-        case .updateFees:
-            writeInt(&buf, Int32(9))
-        
-        
-        case .acceptTerms:
             writeInt(&buf, Int32(10))
         
         
-        case .refreshAfterImport:
+        case .updateFees:
             writeInt(&buf, Int32(11))
+        
+        
+        case .acceptTerms:
+            writeInt(&buf, Int32(12))
+        
+        
+        case .refreshAfterImport:
+            writeInt(&buf, Int32(13))
         
         }
     }
@@ -16590,6 +16573,8 @@ enum AppError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
     )
     case FeesError(String
     )
+    case WalletSelection(String
+    )
 
     
 
@@ -16635,6 +16620,9 @@ public struct FfiConverterTypeAppError: FfiConverterRustBuffer {
         case 2: return .FeesError(
             try FfiConverterString.read(from: &buf)
             )
+        case 3: return .WalletSelection(
+            try FfiConverterString.read(from: &buf)
+            )
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -16654,6 +16642,11 @@ public struct FfiConverterTypeAppError: FfiConverterRustBuffer {
         
         case let .FeesError(v1):
             writeInt(&buf, Int32(2))
+            FfiConverterString.write(v1, into: &buf)
+            
+        
+        case let .WalletSelection(v1):
+            writeInt(&buf, Int32(3))
             FfiConverterString.write(v1, into: &buf)
             
         }
@@ -30482,6 +30475,8 @@ enum WalletCreationError: Swift.Error, Equatable, Hashable, Foundation.Localized
     )
     case Import(String
     )
+    case Unexpected(String
+    )
     case MultiFormat(MultiFormatError
     )
 
@@ -30538,7 +30533,10 @@ public struct FfiConverterTypeWalletCreationError: FfiConverterRustBuffer {
         case 5: return .Import(
             try FfiConverterString.read(from: &buf)
             )
-        case 6: return .MultiFormat(
+        case 6: return .Unexpected(
+            try FfiConverterString.read(from: &buf)
+            )
+        case 7: return .MultiFormat(
             try FfiConverterTypeMultiFormatError.read(from: &buf)
             )
 
@@ -30578,8 +30576,13 @@ public struct FfiConverterTypeWalletCreationError: FfiConverterRustBuffer {
             FfiConverterString.write(v1, into: &buf)
             
         
-        case let .MultiFormat(v1):
+        case let .Unexpected(v1):
             writeInt(&buf, Int32(6))
+            FfiConverterString.write(v1, into: &buf)
+            
+        
+        case let .MultiFormat(v1):
+            writeInt(&buf, Int32(7))
             FfiConverterTypeMultiFormatError.write(v1, into: &buf)
             
         }
@@ -34748,30 +34751,6 @@ fileprivate struct FfiConverterOptionTypeOnboardingBranch: FfiConverterRustBuffe
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-fileprivate struct FfiConverterOptionTypeRoute: FfiConverterRustBuffer {
-    typealias SwiftType = Route?
-
-    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
-        guard let value = value else {
-            writeInt(&buf, Int8(0))
-            return
-        }
-        writeInt(&buf, Int8(1))
-        FfiConverterTypeRoute.write(value, into: &buf)
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
-        switch try readInt(&buf) as Int8 {
-        case 0: return nil
-        case 1: return try FfiConverterTypeRoute.read(from: &buf)
-        default: throw UniffiInternalError.unexpectedOptionalTag
-        }
-    }
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
 fileprivate struct FfiConverterOptionTypeSetAmountFocusField: FfiConverterRustBuffer {
     typealias SwiftType = SetAmountFocusField?
 
@@ -36315,7 +36294,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_cove_checksum_method_ffiapp_delete_corrupted_wallet() != 27181) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_cove_checksum_method_ffiapp_dispatch() != 37137) {
+    if (uniffi_cove_checksum_method_ffiapp_dispatch() != 7288) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_cove_checksum_method_ffiapp_email_mailto() != 41824) {
@@ -36373,12 +36352,6 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_cove_checksum_method_ffiapp_save_tap_signer_backup() != 24217) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_cove_checksum_method_ffiapp_select_latest_or_new_wallet() != 31849) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_cove_checksum_method_ffiapp_select_wallet() != 51673) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_cove_checksum_method_ffiapp_state() != 49253) {
@@ -36681,9 +36654,6 @@ private let initializationResult: InitializationResult = {
     if (uniffi_cove_checksum_method_rustauthmanager_validate_security_action() != 4302) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_cove_checksum_method_rustcloudbackupmanager_dispatch() != 54131) {
-        return InitializationResult.apiChecksumMismatch
-    }
     if (uniffi_cove_checksum_method_rustcloudbackupmanager_backup_new_wallet() != 25342) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -36730,6 +36700,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_cove_checksum_method_rustcloudbackupmanager_verify_backup_integrity() != 35162) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_cove_checksum_method_rustcloudbackupmanager_dispatch() != 23570) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_cove_checksum_method_rustcoincontrolmanager_button_presentation() != 24764) {
