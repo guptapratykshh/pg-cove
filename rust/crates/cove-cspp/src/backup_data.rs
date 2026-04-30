@@ -129,14 +129,18 @@ pub enum WalletMode {
     Decoy,
 }
 
-/// Encrypted wallet backup envelope, uploaded to CloudKit
+/// Encrypted wallet backup envelope, uploaded to cloud storage
+///
+/// The wallet salt derives a new encryption key from the critical data key for
+/// this envelope. The nonce is used with that derived key for
+/// ChaCha20-Poly1305.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EncryptedWalletBackup {
     pub version: u32,
-    /// Random per-wallet salt for HKDF derivation
+    /// Random HKDF salt that derives this backup's new encryption key from the critical data key
     #[serde(with = "hex_array")]
     pub wallet_salt: [u8; 32],
-    /// ChaCha20-Poly1305 nonce
+    /// Random ChaCha20-Poly1305 nonce used with this backup's derived key
     #[serde(with = "hex_array")]
     pub nonce: [u8; 12],
     /// Encrypted WalletEntry JSON
@@ -144,14 +148,20 @@ pub struct EncryptedWalletBackup {
     pub ciphertext: Vec<u8>,
 }
 
-/// Encrypted master key backup envelope, uploaded to CloudKit
+/// Encrypted master key backup envelope, uploaded to cloud storage
+///
+/// The PRF salt lets the selected passkey re-derive the wrapping key used for
+/// this envelope. The nonce is used directly with that PRF-derived wrapping key.
+/// Unlike wallet backups, this wrapper does not derive a new data key per
+/// encryption because it is written infrequently: normally once, plus a few more
+/// times during repair or reinitialization flows.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct EncryptedMasterKeyBackup {
     pub version: u32,
-    /// PRF salt used with the passkey to re-derive the wrapping key
+    /// Salt used with the passkey PRF to re-derive the existing wrapping key
     #[serde(with = "hex_array")]
     pub prf_salt: [u8; 32],
-    /// ChaCha20-Poly1305 nonce
+    /// Random ChaCha20-Poly1305 nonce used with the PRF-derived wrapping key
     #[serde(with = "hex_array")]
     pub nonce: [u8; 12],
     /// Encrypted master key bytes

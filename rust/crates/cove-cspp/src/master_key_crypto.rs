@@ -7,6 +7,12 @@ use crate::error::CsppError;
 use crate::master_key::MasterKey;
 
 /// Encrypt a master key with a PRF-derived wrapping key
+///
+/// The master key wrapper uses the PRF-derived wrapping key directly with a
+/// random 96-bit nonce. This envelope is written rarely: normally once when
+/// cloud backup is enabled, and only a few additional times for repair or
+/// reinitialization flows. Higher-volume wallet backup encryption derives a
+/// fresh per-backup key before using ChaCha20-Poly1305.
 pub fn encrypt_master_key(
     master_key: &MasterKey,
     prf_key: &[u8; 32],
