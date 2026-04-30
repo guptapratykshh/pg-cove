@@ -15,8 +15,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -25,7 +27,6 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.ContentCopy
@@ -36,7 +37,6 @@ import androidx.compose.material.icons.filled.Wallet
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -55,6 +55,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -242,6 +243,7 @@ internal fun OnboardingBackupWalletView(
                 icon = Icons.Default.Description,
                 isComplete = secretWordsSaved,
                 onClick = onShowWords,
+                modifier = Modifier.testTag("onboarding.secretWords"),
             )
             OnboardingStatusCard(
                 title = "Enable Cloud Backup",
@@ -250,6 +252,7 @@ internal fun OnboardingBackupWalletView(
                 icon = Icons.Default.Lock,
                 isComplete = cloudBackupEnabled,
                 onClick = onEnableCloudBackup,
+                modifier = Modifier.testTag("onboarding.cloudBackup.prompt"),
             )
         }
 
@@ -258,6 +261,7 @@ internal fun OnboardingBackupWalletView(
         OnboardingPrimaryButton(
             text = "Continue",
             onClick = onContinue,
+            modifier = Modifier.testTag("onboarding.continue"),
             enabled = secretWordsSaved || cloudBackupEnabled,
         )
     }
@@ -288,25 +292,14 @@ internal fun OnboardingSecretWordsView(
 
     OnboardingBackground {
         Column(modifier = Modifier.fillMaxSize()) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 20.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Default.ArrowBack,
-                        contentDescription = "Back",
-                        tint = Color.White,
-                    )
-                }
-            }
-
             Column(
                 modifier =
                     Modifier
                         .weight(1f)
+                        .statusBarsPadding()
                         .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 24.dp),
+                        .padding(horizontal = 24.dp)
+                        .padding(top = 32.dp),
             ) {
                 Text(
                     text = "Your Recovery Words",
@@ -343,10 +336,24 @@ internal fun OnboardingSecretWordsView(
                 Spacer(modifier = Modifier.size(24.dp))
             }
 
-            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 24.dp)) {
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .navigationBarsPadding()
+                        .padding(horizontal = 24.dp)
+                        .padding(top = 12.dp, bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                OnboardingSecondaryButton(
+                    text = "Back",
+                    onClick = onBack,
+                )
+
                 OnboardingPrimaryButton(
                     text = "I Saved These Words",
                     onClick = onSaved,
+                    modifier = Modifier.testTag("onboarding.secretWords.saved"),
                 )
             }
         }
@@ -471,9 +478,17 @@ private fun OnboardingSoftwareImportCloudBackupStepView(
             }
 
             Spacer(modifier = Modifier.size(14.dp))
-            OnboardingPrimaryButton(text = "Enable Cloud Backup", onClick = { showingDetails = true })
+            OnboardingPrimaryButton(
+                text = "Enable Cloud Backup",
+                onClick = { showingDetails = true },
+                modifier = Modifier.testTag("onboarding.cloudBackup.enable"),
+            )
             Spacer(modifier = Modifier.size(14.dp))
-            OnboardingSecondaryButton(text = "Not Now", onClick = onSkip)
+            OnboardingSecondaryButton(
+                text = "Not Now",
+                onClick = onSkip,
+                modifier = Modifier.testTag("onboarding.cloudBackup.skip"),
+            )
         }
     }
 }
@@ -533,9 +548,17 @@ private fun OnboardingHardwareImportCloudBackupStepView(
             }
 
             Spacer(modifier = Modifier.size(14.dp))
-            OnboardingPrimaryButton(text = "Enable Cloud Backup", onClick = { showingDetails = true })
+            OnboardingPrimaryButton(
+                text = "Enable Cloud Backup",
+                onClick = { showingDetails = true },
+                modifier = Modifier.testTag("onboarding.cloudBackup.enable"),
+            )
             Spacer(modifier = Modifier.size(14.dp))
-            OnboardingSecondaryButton(text = "Not Now", onClick = onSkip)
+            OnboardingSecondaryButton(
+                text = "Not Now",
+                onClick = onSkip,
+                modifier = Modifier.testTag("onboarding.cloudBackup.skip"),
+            )
         }
     }
 }
@@ -656,6 +679,7 @@ private fun CloudBackupEnableOnboardingView(
                     fontWeight = FontWeight.SemiBold,
                     modifier =
                         Modifier
+                            .testTag("onboarding.cloudBackup.cancel")
                             .clip(RoundedCornerShape(12.dp))
                             .clickable(enabled = !isBusy, onClick = onCancel)
                             .padding(horizontal = 8.dp, vertical = 4.dp),
@@ -768,6 +792,7 @@ private fun CloudBackupEnableOnboardingView(
                 OnboardingPrimaryButton(
                     text = "Enable Cloud Backup",
                     onClick = onEnable,
+                    modifier = Modifier.testTag("onboarding.cloudBackup.enable"),
                     enabled = allChecked && !isBusy,
                 )
 
